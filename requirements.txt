@@ -1,0 +1,8 @@
+# Dependências do servidor (o Render instala com: pip install -r requirements.txt)
+fastapi==0.162.1
+uvicorn[standard]==0.54.0
+SQLAlchemy==2.1.8
+psycopg[binary]==3.3.8
+Authlib==1.9.5
+httpx2==2.16.0
+itsdangerous==2.2.0

@@ -14,3 +14,7 @@ senhas*.xlsx
 __pycache__/
 .venv/
 node_modules/
+*.pyc
+.pytest_cache/
+*.db
+*.db-journal
