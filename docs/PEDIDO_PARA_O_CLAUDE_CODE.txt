@@ -1,0 +1,13 @@
+Leia o CLAUDE.md e o docs/ESPECIFICACAO.md deste repositório e comece a construir o Escritório do Especialista para o Render, seguindo a "Ordem de entrega" (seção 10).
+
+Nesta primeira tarefa, faça só a etapa 1:
+- servidor web em Python pronto para o Render (com o comando de iniciar e o arquivo de dependências);
+- conexão com o banco Postgres do Supabase (as tabelas da seção 6 que a etapa 1 usa: pessoas, links_cadastro, acessos);
+- login com Google (um link de acesso para todos), links de cadastro por tipo de acesso e aprovação pelo administrador;
+- painel do administrador com Cadastros, Links de cadastro e Acessos (quem entrou, quando e quantas vezes);
+- escolha da página pelo endereço de entrada (host), com teste automático;
+- deixe preparado o lugar do botão "Atualizar meus dados" (seção 3), com o texto curto explicando perto dele; a busca no SGA entra na etapa 2;
+- testes automáticos e GitHub Actions rodando os testes;
+- .env.example atualizado e um passo a passo curto, em português simples, do que eu preciso cadastrar no Google Cloud, no Supabase e no Render.
+
+Use o visual da página atual (referencia/pagina_atual.html) para a tela de login e para o card do painel do administrador. Não coloque nenhuma senha no código. Quando terminar, me mostre o que mudou e abra o pull request.
