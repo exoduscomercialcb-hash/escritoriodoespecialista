@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass, field
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 FUSO = ZoneInfo("America/Sao_Paulo")
@@ -38,6 +39,34 @@ def _lista(valor: str | None) -> list[str]:
 
 def _sim(valor: str | None) -> bool:
     return (valor or "").strip().lower() in {"1", "sim", "true", "yes", "on"}
+
+
+MARCA_DA_SENHA = "[YOUR-PASSWORD]"
+
+
+def montar_url_do_banco(url: str | None, senha: str | None) -> str:
+    """Junta o endereço do Supabase (copiado como vem, com [YOUR-PASSWORD]) com a senha da DATABASE_PASSWORD.
+
+    Assim ninguém precisa editar a senha no meio do endereço, e símbolos na senha (@, #, /) não quebram nada.
+    Se DATABASE_PASSWORD estiver vazia, vale a senha que já estiver escrita no endereço.
+    """
+    url = (url or "").strip()
+    if any(c.isspace() for c in url):
+        raise ConfigInvalida("DATABASE_URL tem espaço ou quebra de linha no meio. "
+                             "Copie de novo o endereço do Supabase e cole em uma linha só.")
+    senha = (senha or "").strip("\r\n")
+    if not url or not senha:
+        if MARCA_DA_SENHA in url:
+            raise ConfigInvalida("DATABASE_URL ainda tem [YOUR-PASSWORD]. "
+                                 "Cadastre a senha do banco na variável DATABASE_PASSWORD.")
+        return url
+    esquema, separador, resto = url.partition("://")
+    credenciais, arroba, servidor = resto.rpartition("@")
+    if not separador or not arroba or not credenciais:
+        raise ConfigInvalida("DATABASE_URL não está no formato do Supabase. "
+                             "Copie o endereço do Session pooler (começa com postgresql://postgres.).")
+    usuario = credenciais.split(":", 1)[0]
+    return f"{esquema}://{usuario}:{quote(senha, safe='')}@{servidor}"
 
 
 def url_do_banco(url: str) -> str:
@@ -82,7 +111,7 @@ def carregar(env: dict | None = None) -> Config:
     if not em_producao:
         hosts.update({"localhost", "127.0.0.1"})
 
-    database_url = env.get("DATABASE_URL", "").strip()
+    database_url = montar_url_do_banco(env.get("DATABASE_URL"), env.get("DATABASE_PASSWORD"))
     session_secret = env.get("SESSION_SECRET", "").strip()
     if em_producao:
         faltando = [n for n, v in (("DATABASE_URL", database_url), ("SESSION_SECRET", session_secret),

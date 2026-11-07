@@ -5,6 +5,7 @@ No computador:  MODO_TESTE=1 uvicorn --factory app.main:criar_app --reload
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,14 +15,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqlalchemy.exc import OperationalError
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import Config, carregar
-from .db import criar_engine, fabrica_de_sessoes, iniciar_banco
+from .db import criar_engine, descrever_banco, fabrica_de_sessoes, iniciar_banco, motivo_da_falha
 from .hosts import NEUTRA, pagina_do_host
 from .rotas import ESTATICOS, rotas, rotas_teste
 from .rotas_admin import rotas_admin
 from .servicos import ErroRegra
+
+log = logging.getLogger("escritorio")
 
 PAGINA_NEUTRA = (Path(__file__).parent / "static" / "neutra.html").read_text(encoding="utf-8")
 
@@ -64,7 +68,13 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def ciclo(_app: FastAPI):
-        iniciar_banco(engine)
+        try:
+            iniciar_banco(engine)
+        except OperationalError as erro:
+            # Mensagem curta em português, sem o texto original do erro (que pode repetir pedaços do endereço).
+            log.error("Não foi possível conectar no banco: %s. Tentativa: %s.", motivo_da_falha(erro),
+                      descrever_banco(cfg.database_url))
+            raise RuntimeError("Banco de dados indisponível. Veja a mensagem acima.") from None
         yield
         engine.dispose()
 

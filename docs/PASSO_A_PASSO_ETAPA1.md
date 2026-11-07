@@ -12,8 +12,9 @@ Faça na ordem. Nenhuma senha vai para o GitHub nem para o chat: elas ficam só 
 3. Crie uma **senha do banco** forte e guarde no seu Excel de senhas. Ela não volta a aparecer.
 4. Com o projeto pronto, clique em **Connect** (no alto da tela) e escolha **Session pooler**.
    Use o Session pooler, e não o Direct connection: o Render não conecta pelo endereço direto.
-5. Copie o endereço que começa com `postgresql://postgres.` e troque `[YOUR-PASSWORD]` pela senha do passo 3.
-   Esse endereço completo é o **DATABASE_URL** (vai no Render, passo 3).
+5. Copie o endereço que começa com `postgresql://postgres.` **como ele vem, sem mexer** (com o `[YOUR-PASSWORD]` no meio).
+   Esse endereço é o **DATABASE_URL**, e a senha do passo 3 é o **DATABASE_PASSWORD** (os dois vão no Render, passo 3).
+   O servidor coloca a senha no lugar do `[YOUR-PASSWORD]` sozinho, então não precisa editar o endereço.
 
 As tabelas `pessoas`, `links_cadastro` e `acessos` são criadas sozinhas quando o servidor liga.
 Elas ficam trancadas para a API pública do Supabase: só o servidor do Escritório lê e grava.
@@ -51,6 +52,7 @@ Elas ficam trancadas para a API pública do Supabase: só o servidor do Escritó
 | Nome | Valor |
 |---|---|
 | `DATABASE_URL` | o endereço do Supabase (passo 1.5) |
+| `DATABASE_PASSWORD` | a senha do banco do Supabase (passo 1.3) |
 | `SESSION_SECRET` | clique em **Generate** |
 | `GOOGLE_OAUTH_CLIENT_ID` | passo 2.5 |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | passo 2.5 |
@@ -59,6 +61,7 @@ Elas ficam trancadas para a API pública do Supabase: só o servidor do Escritó
 
    Opcional: `PAINEL_COORDENACAO` = `1` libera o painel do administrador para a coordenação.
    Se faltar alguma variável obrigatória, o servidor não liga e o log do Render mostra qual falta.
+   Se não conectar no banco, o log diz o motivo em português (por exemplo, "o Supabase recusou a senha"), sem mostrar a senha.
 4. Depois do primeiro deploy, copie o endereço `https://….onrender.com` e confira se ele está nos URIs de redirecionamento do Google (passo 2.4).
 
 ## 4. Testar o login

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, String, create_engine, event, inspect,
                         text)
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -84,6 +84,32 @@ def criar_engine(url: str) -> Engine:
     # Poucas conexões: o pooler do Supabase no plano gratuito tem limite baixo.
     return create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_recycle=1800,
                          connect_args=connect_args)
+
+
+def descrever_banco(url: str) -> str:
+    """Para o registro do Render: a quem o servidor tentou conectar, sem nunca mostrar a senha."""
+    try:
+        u = make_url(url)
+    except Exception:  # noqa: BLE001 - endereço ilegível: não repetir nada dele
+        return "endereço do banco ilegível"
+    return (f"usuário {u.username or '(vazio)'}, servidor {u.host or '(vazio)'}, porta {u.port or 5432}, "
+            f"senha recebida com {len(u.password or '')} caracteres")
+
+
+def motivo_da_falha(erro: BaseException) -> str:
+    """Traduz o erro de conexão do Postgres/Supabase para uma frase curta, sem copiar o texto original."""
+    texto = str(getattr(erro, "orig", None) or erro).lower()
+    if "password authentication failed" in texto:
+        return ("o Supabase recusou a senha. Confira a DATABASE_PASSWORD no Render e a senha do banco no Supabase "
+                "(Project Settings > Database)")
+    if "tenant or user not found" in texto:
+        return ("o Supabase não achou o projeto nesse servidor. Copie de novo o endereço do Session pooler "
+                "do projeto certo")
+    if "resolve host" in texto or "name or service not known" in texto or "translate host" in texto:
+        return "o servidor do banco não foi encontrado. Confira o endereço na DATABASE_URL"
+    if "timeout" in texto or "timed out" in texto or "unreachable" in texto:
+        return "o banco não respondeu. Use o endereço do Session pooler, não o da conexão direta"
+    return "erro de conexão com o banco"
 
 
 def iniciar_banco(engine: Engine) -> None:
