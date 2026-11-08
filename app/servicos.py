@@ -10,7 +10,7 @@ import unicodedata
 from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from .config import EQUIPES, SITUACOES, TIPOS, Config
@@ -333,6 +333,20 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
     db.commit()
     db.refresh(alvo)
     return alvo
+
+
+def excluir_pessoa(db: Session, alvo: Pessoa, quem: Pessoa, cfg: Config) -> None:
+    """Apaga o cadastro e os acessos dele (o banco apaga os acessos e deixa os liderados sem líder)."""
+    if alvo.id == quem.id:
+        raise ErroRegra("Você não pode excluir o seu próprio cadastro.")
+    if alvo.email and alvo.email in cfg.admin_emails:
+        raise ErroRegra("Este e-mail está em ADMIN_EMAILS no Render: não pode ser excluído por aqui.")
+    if alvo.tipo == "admin" and quem.tipo != "admin":
+        raise ErroRegra("Só o administrador mexe em acessos de administrador.")
+    db.execute(update(Pessoa).where(Pessoa.lider_id == alvo.id).values(lider_id=None))
+    db.execute(delete(Acesso).where(Acesso.pessoa_id == alvo.id))
+    db.execute(delete(Pessoa).where(Pessoa.id == alvo.id))
+    db.commit()
 
 
 # ---------------------------------------------------------------- acessos

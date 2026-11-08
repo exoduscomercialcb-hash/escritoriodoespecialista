@@ -8,7 +8,8 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 
 - **Etapa 1 no ar** em https://escritorio-do-especialista.onrender.com, publicando a branch `etapa-1-esqueleto-login`
   (pull request #1, ainda sem merge na `main`). Login com Google, cadastro pela coordenação (planilha ou um por um),
-  entrada com CPF + WhatsApp + Google, painel do administrador (Cadastros e Acessos).
+  entrada com CPF + WhatsApp + Google, painel do administrador (Cadastros, com Novo cadastro, Importar planilha,
+  Editar, Bloquear e Excluir; e Acessos).
 - **Pendente do Rafael:** domínio `escritorio.exodusbeneficios.com.br` (CNAME feito na Hostinger; falta "Verify" no
   Render), escolher o líder de 4 liderados, cadastrar 1 pessoa que saiu da planilha (CPF errado), aprovar o PR #1.
 - **Próxima etapa:** 2 — sincronização com SGA, Power CRM e BI (seção 10 de `docs/ESPECIFICACAO.md`).

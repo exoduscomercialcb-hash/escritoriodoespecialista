@@ -150,3 +150,39 @@ def test_lista_de_cadastros_filtra_e_busca(admin, db):
     assert nomes(situacao="pendente") == ["Ana Inventada"]
     assert nomes(q="lua") == ["Bruno Inventado"]
     assert nomes(q="BRUNO INV") == ["Bruno Inventado"]
+
+
+def test_excluir_cadastro(admin, novo_cliente, db):
+    from sqlalchemy import select as sel
+
+    from app.db import Acesso
+    lider = criar_pessoa(db, nome="Lider Para Excluir", email="lider.x@exemplo.com.br", tipo="lider", equipe="Águias")
+    liderado = criar_pessoa(db, nome="Liderado Fica", email="liderado@exemplo.com.br", tipo="especialista",
+                            equipe="Águias", lider_id=lider.id)
+    lider_id, liderado_id = lider.id, liderado.id
+    c = novo_cliente()
+    entrar(c, "lider.x@exemplo.com.br")
+    c.post("/api/acesso", json={"aba": "menu"})
+    assert admin.post(f"/api/admin/pessoas/{lider_id}/excluir", json={}).json() == {"ok": True}
+    db.expire_all()
+    assert db.get(Pessoa, lider_id) is None
+    assert db.scalars(sel(Acesso).where(Acesso.pessoa_id == lider_id)).all() == []
+    assert db.get(Pessoa, liderado_id).lider_id is None  # o liderado fica, sem líder
+    assert c.get("/api/eu").json()["estado"] == "anonimo"  # quem foi excluído sai na hora
+    assert admin.post("/api/admin/pessoas/9999/excluir", json={}).status_code == 404
+
+
+def test_excluir_tem_limites(admin, novo_cliente, db):
+    eu = admin.get("/api/eu").json()["pessoa"]
+    r = admin.post(f"/api/admin/pessoas/{eu['id']}/excluir", json={})
+    assert r.status_code == 400 and "próprio cadastro" in r.json()["erro"]
+    criar_pessoa(db, nome="Admin Dois", email="admin2@exemplo.com.br", tipo="admin")
+    outro = novo_cliente()
+    entrar(outro, "admin2@exemplo.com.br")
+    r = outro.post(f"/api/admin/pessoas/{eu['id']}/excluir", json={})
+    assert r.status_code == 400 and "ADMIN_EMAILS" in r.json()["erro"]
+    p = criar_pessoa(db, nome="Cadastro Comum", email="comum@exemplo.com.br", tipo="cadastro")
+    c = novo_cliente()
+    entrar(c, "comum@exemplo.com.br")
+    assert c.post(f"/api/admin/pessoas/{p.id}/excluir", json={}).status_code == 403
+    assert admin.post(f"/api/admin/pessoas/{p.id}/excluir", content="x").status_code == 415

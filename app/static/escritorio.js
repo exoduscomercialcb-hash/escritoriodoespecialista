@@ -309,6 +309,12 @@
     if (p.situacao === 'bloqueado') b('Liberar acesso', 'go', el => salvar(el, { ...valores(), situacao: 'ativo' }, 'Acesso liberado.'));
     b('Salvar', '', el => salvar(el, valores(), 'Cadastro salvo.'));
     if (p.situacao !== 'bloqueado' && !eu) b('Bloquear', 'no', el => { if (confirm('Bloquear o acesso de ' + p.nome + '?')) salvar(el, { situacao: 'bloqueado' }, 'Acesso bloqueado.'); });
+    if (!eu) b('Excluir', 'no', async el => {
+      if (!confirm('Excluir o cadastro de ' + p.nome + '? Os acessos registrados dessa pessoa também são apagados. Não dá para desfazer.')) return;
+      erro.hidden = true; el.disabled = true;
+      try { await api('/api/admin/pessoas/' + p.id + '/excluir', { corpo: {} }); toast('Cadastro excluído.'); OP = await api('/api/admin/opcoes'); carregarCadastros(); }
+      catch (e) { erro.textContent = e.message; erro.hidden = false; el.disabled = false; }
+    });
     return h('div', { class: 'pc ' + p.situacao, 'data-editor': p.id }, form, erro, h('div', { class: 'pc-act' }, ...botoes));
   }
 

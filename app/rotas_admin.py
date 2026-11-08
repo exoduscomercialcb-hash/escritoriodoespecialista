@@ -10,8 +10,8 @@ from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, pl
 from .config import EQUIPES, SITUACOES, TIPOS
 from .db import Pessoa
 from .dependencias import banco, config, exige_json, exige_painel
-from .servicos import (atualizar_pessoa, data_do_filtro, lideres, limpar_espacos, pessoa_para_json, relatorio_acessos,
-                       so_numeros)
+from .servicos import (atualizar_pessoa, data_do_filtro, excluir_pessoa, lideres, limpar_espacos, pessoa_para_json,
+                       relatorio_acessos, so_numeros)
 
 rotas_admin = APIRouter(prefix="/api/admin", dependencies=[Depends(exige_painel)])
 
@@ -100,6 +100,15 @@ def editar_pessoa(pessoa_id: int, corpo: CorpoPessoa, request: Request, db: Sess
     quem = db.get(Pessoa, quem.id)
     alvo = atualizar_pessoa(db, alvo, corpo.model_dump(exclude_unset=True), quem, config(request))
     return {"pessoa": pessoa_para_json(alvo)}
+
+
+@rotas_admin.post("/pessoas/{pessoa_id}/excluir", dependencies=[Depends(exige_json)])
+def excluir(pessoa_id: int, request: Request, db: Session = Depends(banco), quem: Pessoa = Depends(exige_painel)):
+    alvo = db.get(Pessoa, pessoa_id)
+    if alvo is None:
+        raise HTTPException(404, "Cadastro não encontrado.")
+    excluir_pessoa(db, alvo, db.get(Pessoa, quem.id), config(request))
+    return {"ok": True}
 
 
 @rotas_admin.get("/acessos")
