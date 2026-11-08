@@ -61,6 +61,7 @@ Dono: Rafael Veiga (coordenador, Exodus Benefícios). Responder sempre em portug
 - **Termos**: "especialista" (não voluntário), "equipe" (não cooperativa). A Exodus é Proteção Veicular, nunca "seguradora" nem "empresa".
 
 ## 6. Histórico de erros (sintoma → causa → correção → teste)
+Erros do sistema novo (Render): `AGENTS.md`, seção "Kit de erros".
 | Data | Sintoma | Causa | Correção | Teste |
 |---|---|---|---|---|
 | 30/10 e 31/10 | Log com "BLOQUEADO" | Token do SGA bloqueado por excesso de extração (várias tarefas usam o mesmo token) | Parar, não repetir; aplicar só os comprovantes com `pix.py` e publicar | Regra 1.4 |
@@ -80,10 +81,6 @@ Dono: Rafael Veiga (coordenador, Exodus Benefícios). Responder sempre em portug
 | 03/11 | Atualização parou: `ValueError` em `VC = dict(OLD.get("vcache"))`; página foi de 1,1 MB para 1,9 MB | A regra das vendas concretizadas (01/11) usou o nome `VC`, que já era o cache das validadas: o bloco `all` passou a guardar as 1.561 cotações do Power CRM no lugar do `vcache` | Variável renomeada para `VCOT`; `vcache` restaurado da atualização de 01/11 22:16; o script recusa publicar se o `vcache` não for um dicionário | assert no script |
 | 04/11 | SGA recusou o login (401 "Login ou senha inválido") e oscilou (ReadTimeout/ProxyError) | Instabilidade ou bloqueio do SGA | Parar a extração (regra 1.4) e aplicar comprovantes/cidades sem SGA (`cid_pc.py` + `pix.py`) | Regra 1.4 |
 | — | Funções da página inacessíveis no teste (`CP is not defined`) | Código dentro de uma IIFE | Gancho `window.__teste` só em `file://` | T4–T6 |
-| 07/11 | Escritório novo no Render não ligava: "failed to resolve host" e depois "password authentication failed"; um pedaço da senha do banco apareceu no log | Senha do banco escrita à mão no meio do DATABASE_URL (com `@`, colchete e quebra de linha) | Senha em variável separada (`DATABASE_PASSWORD`), encaixada pelo servidor no lugar do `[YOUR-PASSWORD]`; falha de conexão explicada em português, sem a senha; senha do banco trocada | `tests/test_banco_config.py` |
-| 08/11 | Link de cadastro aberto já logado ia para o menu; ao trocar de conta, o Google voltava com "acesso não liberado" | O link se perdia ao sair e entrar de novo | Links de cadastro substituídos pelo endereço único com primeiro acesso por CPF e WhatsApp (decisão do Rafael); quem entra pelo Google sem CPF recebe o pedido de CPF em seguida | `tests/test_cadastro.py`, `tests/test_interface.py` |
-| 08/11 | Um erro 500 em `/api/eu` durante a publicação que tirou Matrícula e Nome no SGA | Na troca de versão, a versão nova apagou as colunas enquanto a antiga ainda atendia por alguns segundos | Nenhuma correção no código (passou sozinho). Regra: para apagar coluna, publicar primeiro o código que não a usa e só na publicação seguinte apagar | Migração em `tests/test_banco_config.py` |
-| 08/11 | Rafael informou o CPF de master, entrou com a conta rafaelveiga.exodus e viu "acesso não liberado" | O CPF de master está ligado à conta exoduscomercialcb; a outra conta tinha um cadastro de líder pendente que sobrou do teste do link | As duas contas em `ADMIN_EMAILS` (decisão do Rafael); a tela passa a dizer com qual conta Google o CPF informado entra (e-mail parcialmente escondido) | `test_cpf_de_outra_conta_mostra_qual_conta_usar` |
 
 ## 6.1 Criar acesso de especialista (liderado)
 1. Novo `id` = próximo número; chave `k` aleatória (32 bytes). Entrada em `spec_keys.json` com `nome`, `eqs` e `sga` (nome exato do voluntário no SGA).

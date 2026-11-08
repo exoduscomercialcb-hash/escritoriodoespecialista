@@ -3,6 +3,7 @@
 Sistema interno da Exodus Benefícios para especialistas, líderes e coordenação: lista do remarketing, evolução da base e cancelados recentes, adesões validadas e bônus, descontos, comprovantes de adesão e reativações.
 
 Endereço: https://escritorio.exodusbeneficios.com.br (Render). Especificação em `docs/ESPECIFICACAO.md`.
+Para quem vai trabalhar no código: `AGENTS.md` (regras, mapa, como testar e publicar, kit de erros).
 
 ## Situação
 - **Etapa 1 (feita):** servidor, banco (Supabase), login com Google e painel do administrador (Cadastros e Acessos). A coordenação cadastra antes (nome, tipo de conta e CPF, um por um ou colando a planilha); no primeiro acesso, a pessoa informa CPF e WhatsApp e entra com o Google, num endereço só. Escolha da página pelo endereço. Lugar do botão "Atualizar meus dados" (a busca no SGA entra na etapa 2).
@@ -13,7 +14,7 @@ Endereço: https://escritorio.exodusbeneficios.com.br (Render). Especificação 
 |---|---|
 | `app/main.py` | monta o servidor, a escolha da página pelo endereço e os cabeçalhos de segurança |
 | `app/config.py` | lê as variáveis de ambiente (nomes em `.env.example`) |
-| `app/db.py` | tabelas `pessoas`, `links_cadastro` e `acessos` |
+| `app/db.py` | tabelas `pessoas` e `acessos`, e as migrações automáticas |
 | `app/servicos.py` | regras: login, primeiro acesso (CPF e WhatsApp), aprovação e acessos |
 | `app/cadastro.py` | cadastro pela coordenação: um por um e importação da planilha |
 | `app/rotas.py`, `app/rotas_admin.py` | endereços da API |
