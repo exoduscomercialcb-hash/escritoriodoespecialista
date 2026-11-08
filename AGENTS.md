@@ -15,6 +15,8 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   `SGA_TOKEN`, `SGA_USUARIO`, `SGA_SENHA` e `POWERCRM_TOKEN`; exportar do sistema atual o que só existe na página
   (histórico dos meses fechados, lista do remarketing, marcações e reativações).
 - **Depois:** etapa 3, os cards (as 6 telas de hoje lendo da API).
+- **Plano detalhado e ordem das partes:** `docs/PLANO_ETAPAS_2_E_3.md` (reaproveitar o script e a página atuais; o texto
+  para pedir a exportação ao Claude que tem o Kit está lá).
 
 ## Antes de mexer em qualquer coisa
 
