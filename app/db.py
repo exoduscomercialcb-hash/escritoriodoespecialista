@@ -90,6 +90,30 @@ def criar_engine(url: str) -> Engine:
                          connect_args=connect_args)
 
 
+class Atualizacao(Base):
+    """Registro de cada busca nas fontes (SGA, Power CRM, BI, Drive): aparece no painel, aba Atualizações."""
+    __tablename__ = "atualizacoes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fonte: Mapped[str] = mapped_column(String(20), index=True)  # sga, powercrm, bi, drive
+    tipo: Mapped[str] = mapped_column(String(30))  # teste, completa, leve, pessoa
+    inicio: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora, index=True)
+    fim: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # None = ainda rodando
+    mensagem: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    pessoa_id: Mapped[int | None] = mapped_column(ForeignKey("pessoas.id", ondelete="SET NULL"), nullable=True)
+
+
+class Trava(Base):
+    """Travas guardadas no banco: SGA bloqueado (até o próximo horário) e "só uma instância roda a busca"."""
+    __tablename__ = "travas"
+
+    nome: Mapped[str] = mapped_column(String(40), primary_key=True)
+    ate: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    motivo: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
+
+
 def descrever_banco(url: str) -> str:
     """Para o registro do Render: a quem o servidor tentou conectar, sem nunca mostrar a senha."""
     try:

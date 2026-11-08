@@ -148,7 +148,7 @@
 
   /* ------------------------------------------------------------ painel do administrador */
   let OP = null; // opções: tipos, equipes, líderes
-  const ABA_NOME = { entrada: 'Entrou', menu: 'Menu principal', admin_cadastros: 'Painel: Cadastros', admin_links: 'Painel: Links', admin_acessos: 'Painel: Acessos' };
+  const ABA_NOME = { entrada: 'Entrou', menu: 'Menu principal', admin_cadastros: 'Painel: Cadastros', admin_links: 'Painel: Links', admin_acessos: 'Painel: Acessos', admin_atualizacoes: 'Painel: Atualizações' };
   const SIT_CHIP = { pendente: ['chip pend', 'Pendente'], ativo: ['chip ok', 'Ativo'], bloqueado: ['chip bloq', 'Bloqueado'] };
 
   async function abrirPainel(parte) {
@@ -162,9 +162,10 @@
 
   function mostrarParte(parte) {
     document.querySelectorAll('[data-adm]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.adm === parte)));
-    $('admCad').hidden = parte !== 'cad'; $('admAcs').hidden = parte !== 'acs';
+    $('admCad').hidden = parte !== 'cad'; $('admAcs').hidden = parte !== 'acs'; $('admAtu').hidden = parte !== 'atu';
     if (parte === 'cad') { registrar('admin_cadastros'); carregarCadastros(); }
     if (parte === 'acs') { registrar('admin_acessos'); prepararAcessos(); }
+    if (parte === 'atu') { registrar('admin_atualizacoes'); carregarAtualizacoes(); }
   }
   document.querySelectorAll('[data-adm]').forEach(b => b.addEventListener('click', () => mostrarParte(b.dataset.adm)));
 
@@ -317,6 +318,38 @@
     });
     return h('div', { class: 'pc ' + p.situacao, 'data-editor': p.id }, form, erro, h('div', { class: 'pc-act' }, ...botoes));
   }
+
+  /* Atualizações: última busca de cada fonte, erros, trava do SGA e teste de conexão */
+  async function carregarAtualizacoes() {
+    let r;
+    try { r = await api('/api/admin/atualizacoes'); } catch (e) { toast(e.message); return; }
+    const pausa = $('atuPausa');
+    pausa.hidden = !r.sga_pausado;
+    if (r.sga_pausado) pausa.textContent = 'SGA pausado até ' + r.sga_pausado.ate_txt + ': ' + r.sga_pausado.motivo + '. Nenhuma busca chama o SGA antes disso.';
+    $('atuProxima').textContent = 'Próxima busca completa do SGA: ' + r.proxima_busca_sga_txt + '.';
+    $('atuFontes').replaceChildren(...r.fontes.map(f => h('div', { class: 'atu-fonte', 'data-fonte': f.fonte },
+      h('b', {}, f.nome),
+      h('span', { class: f.ultimo_ok_txt ? 'chip ok' : 'chip' }, f.ultimo_ok_txt ? 'Último sucesso: ' + f.ultimo_ok_txt + (f.ultimo_ok_tipo === 'teste' ? ' (teste)' : '') : 'Ainda sem busca'),
+      f.rodando ? h('span', { class: 'chip aguarda' }, 'Rodando agora') : null,
+      f.ultimo_erro ? h('small', { class: 'sub erro-fonte' }, 'Último erro (' + f.ultimo_erro_txt + '): ' + f.ultimo_erro) : null)));
+    $('atuHistorico').replaceChildren(
+      h('thead', {}, h('tr', {}, ...['Início', 'Fim', 'Fonte', 'Tipo', 'Resultado', 'Mensagem'].map(t => h('th', {}, t)))),
+      h('tbody', {}, ...(r.historico.length ? r.historico.map(a => h('tr', {},
+        h('td', { class: 'nw' }, a.inicio_txt), h('td', { class: 'nw' }, a.fim_txt || '—'), h('td', { class: 'nw' }, a.fonte_nome),
+        h('td', {}, a.tipo), h('td', {}, a.ok === null ? h('span', { class: 'chip aguarda' }, 'rodando') : h('span', { class: a.ok ? 'chip ok' : 'chip bloq' }, a.ok ? 'ok' : 'erro')),
+        h('td', {}, a.mensagem || '')))
+        : [h('tr', {}, h('td', { colspan: 6, class: 'empty' }, 'Nenhuma busca registrada ainda.'))])));
+  }
+
+  $('atuTestar').addEventListener('click', async () => {
+    const b = $('atuTestar'); b.disabled = true; $('atuResultado').replaceChildren(h('p', { class: 'hint' }, 'Testando…'));
+    try {
+      const r = await api('/api/admin/atualizacoes/testar', { corpo: {} });
+      $('atuResultado').replaceChildren(...[['SGA', r.sga], ['Power CRM', r.powercrm]].map(([n, x]) => h('p', { class: x.ok ? 'ok-msg' : 'err' }, n + ': ' + x.mensagem)));
+      carregarAtualizacoes();
+    } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
+    b.disabled = false;
+  });
 
   /* Acessos */
   async function prepararAcessos() {

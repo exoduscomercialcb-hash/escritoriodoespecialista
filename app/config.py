@@ -90,7 +90,16 @@ class Config:
     cookie_seguro: bool = True
     painel_coordenacao: bool = False
     em_producao: bool = False
+    sga_token: str = ""
+    sga_usuario: str = ""
+    sga_senha: str = ""
+    powercrm_token: str = ""
+    testar_na_partida: bool = False  # testa SGA e Power CRM quando o servidor liga (só no Render)
     extras: dict = field(default_factory=dict)
+
+    @property
+    def sga_configurado(self) -> bool:
+        return bool(self.sga_token and self.sga_usuario and self.sga_senha)
 
     @property
     def google_configurado(self) -> bool:
@@ -136,4 +145,9 @@ def carregar(env: dict | None = None) -> Config:
         cookie_seguro=em_producao,
         painel_coordenacao=_sim(env.get("PAINEL_COORDENACAO")),
         em_producao=em_producao,
+        sga_token=env.get("SGA_TOKEN", "").strip(),
+        sga_usuario=env.get("SGA_USUARIO", "").strip(),
+        sga_senha=env.get("SGA_SENHA", "").strip(),
+        powercrm_token=env.get("POWERCRM_TOKEN", "").strip(),
+        testar_na_partida=em_producao,
     )
