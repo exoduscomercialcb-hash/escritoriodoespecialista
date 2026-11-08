@@ -45,6 +45,7 @@
       <div class="seg adm-tabs" role="group" aria-label="Partes do painel">
         <button type="button" data-adm="cad" aria-pressed="true">Cadastros</button>
         <button type="button" data-adm="acs" aria-pressed="false">Acessos</button>
+        <button type="button" data-adm="atu" aria-pressed="false">Atualizações</button>
       </div>
 
       <div id="admCad">
@@ -86,6 +87,18 @@
         </div>
         <div class="cad-topo"><p class="legend" id="cadTotal"></p><a class="btn" id="cadBaixar" href="/api/admin/cadastros.csv">Baixar planilha</a></div>
         <div class="tscroll"><table class="vtab cad" id="cadTabela"></table></div>
+      </div>
+
+      <div id="admAtu" hidden>
+        <p class="err" id="atuPausa" hidden></p>
+        <div class="atu-fontes" id="atuFontes"></div>
+        <div class="cad-topo">
+          <p class="legend" id="atuProxima"></p>
+          <button class="btn" type="button" id="atuTestar">Testar conexões (SGA e Power CRM)</button>
+        </div>
+        <div id="atuResultado" role="status"></div>
+        <h2 class="adm-h">Histórico</h2>
+        <div class="tscroll"><table class="vtab" id="atuHistorico"></table></div>
       </div>
 
       <div id="admAcs" hidden>

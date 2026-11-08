@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
+from .atualizacoes import painel as painel_de_atualizacoes
+from .atualizacoes import testar_powercrm, testar_sga
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
 from .db import Pessoa
@@ -109,6 +111,18 @@ def excluir(pessoa_id: int, request: Request, db: Session = Depends(banco), quem
         raise HTTPException(404, "Cadastro não encontrado.")
     excluir_pessoa(db, alvo, db.get(Pessoa, quem.id), config(request))
     return {"ok": True}
+
+
+@rotas_admin.get("/atualizacoes")
+def ver_atualizacoes(db: Session = Depends(banco)):
+    return painel_de_atualizacoes(db)
+
+
+@rotas_admin.post("/atualizacoes/testar", dependencies=[Depends(exige_json)])
+def testar_conexoes(request: Request, db: Session = Depends(banco)):
+    """Testa SGA (só o login) e Power CRM (1 página). Respeita a trava do SGA."""
+    cfg = config(request)
+    return {"sga": testar_sga(db, cfg), "powercrm": testar_powercrm(db, cfg)}
 
 
 @rotas_admin.get("/acessos")

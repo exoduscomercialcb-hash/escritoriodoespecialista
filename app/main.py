@@ -6,6 +6,7 @@ No computador:  MODO_TESTE=1 uvicorn --factory app.main:criar_app --reload
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.sessions import SessionMiddleware
 
+from .atualizacoes import teste_de_partida
 from .config import Config, carregar
 from .db import criar_engine, descrever_banco, fabrica_de_sessoes, iniciar_banco, motivo_da_falha
 from .hosts import NEUTRA, pagina_do_host
@@ -26,6 +28,12 @@ from .rotas_admin import rotas_admin
 from .servicos import ErroRegra
 
 log = logging.getLogger("escritorio")
+if not log.handlers:  # mensagens do escritório aparecem no registro do Render
+    _saida = logging.StreamHandler()
+    _saida.setFormatter(logging.Formatter("%(levelname)s:     [escritorio] %(message)s"))
+    log.addHandler(_saida)
+    log.setLevel(logging.INFO)
+    log.propagate = False
 
 PAGINA_NEUTRA = (Path(__file__).parent / "static" / "neutra.html").read_text(encoding="utf-8")
 
@@ -75,6 +83,8 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
             log.error("Não foi possível conectar no banco: %s. Tentativa: %s.", motivo_da_falha(erro),
                       descrever_banco(cfg.database_url))
             raise RuntimeError("Banco de dados indisponível. Veja a mensagem acima.") from None
+        if cfg.testar_na_partida:  # em outra linha de execução: o servidor não espera o SGA para ficar no ar
+            threading.Thread(target=teste_de_partida, args=(app.state.Sessao, cfg), daemon=True).start()
         yield
         engine.dispose()
 
