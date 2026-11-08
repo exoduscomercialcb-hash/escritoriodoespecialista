@@ -6,13 +6,15 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 
 ## Onde estamos (atualize esta seção a cada entrega)
 
-- **Etapa 1 no ar** em https://escritorio-do-especialista.onrender.com, publicando a branch `etapa-1-esqueleto-login`
-  (pull request #1, ainda sem merge na `main`). Login com Google, cadastro pela coordenação (planilha ou um por um),
-  entrada com CPF + WhatsApp + Google, painel do administrador (Cadastros, com Novo cadastro, Importar planilha,
-  Editar, Bloquear e Excluir; e Acessos).
-- **Pendente do Rafael:** domínio `escritorio.exodusbeneficios.com.br` (CNAME feito na Hostinger; falta "Verify" no
-  Render), escolher o líder de 4 liderados, cadastrar 1 pessoa que saiu da planilha (CPF errado), aprovar o PR #1.
-- **Próxima etapa:** 2 — sincronização com SGA, Power CRM e BI (seção 10 de `docs/ESPECIFICACAO.md`).
+- **Etapa 1 concluída e no ar** em https://escritorio-do-especialista.onrender.com (PR #1 aprovado em 08/11).
+  O Render publica a `main`, só depois dos testes passarem ("After CI Checks Pass").
+- **Etapa 2 em andamento** na branch `etapa-2-sincronizacao`: o servidor busca SGA, Power CRM e BI sozinho
+  (seção 3 e etapa 2 da seção 10 de `docs/ESPECIFICACAO.md`). Enquanto o sistema atual estiver no ar, a busca completa
+  do SGA roda **1 vez por dia, de madrugada** (os dois sistemas usam o mesmo token, que já foi bloqueado por excesso).
+- **Pendente do Rafael:** "Verify" do domínio `escritorio.exodusbeneficios.com.br` no Render; cadastrar no Render
+  `SGA_TOKEN`, `SGA_USUARIO`, `SGA_SENHA` e `POWERCRM_TOKEN`; exportar do sistema atual o que só existe na página
+  (histórico dos meses fechados, lista do remarketing, marcações e reativações).
+- **Depois:** etapa 3, os cards (as 6 telas de hoje lendo da API).
 
 ## Antes de mexer em qualquer coisa
 
