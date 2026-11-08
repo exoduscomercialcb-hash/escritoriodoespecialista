@@ -1,21 +1,34 @@
 """Rotas públicas: páginas, login com Google, cadastro pelo link e API da pessoa logada."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from authlib.integrations.starlette_client import OAuthError
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from . import banco_pagina as bp
+from .dados import ler as ler_pacote
+from .dados import pacote_da_pessoa
 from .db import Pessoa
 from .dependencias import banco, config, exige_json, exige_pessoa, ip_do_cliente, pessoa_logada
-from .servicos import (MSG_NAO_LIBERADO, achar_pessoa, concluir_login, pessoa_para_json, pode_ver_painel, primeiro_acesso,
-                       registrar_acesso)
+from .servicos import (MSG_NAO_LIBERADO, achar_pessoa, concluir_login, lista_de_equipes, pessoa_para_json,
+                       pode_ver_painel, primeiro_acesso, registrar_acesso)
 
 ESTATICOS = Path(__file__).parent / "static"
 PAGINA = ESTATICOS / "escritorio.html"
+PAGINA_CARDS = Path(__file__).parent / "paginas" / "cards.html"  # gerada da página atual (ver AGENTS.md)
+RTCFG_PADRAO = (Path(__file__).parent / "paginas" / "rtcfg_padrao.json").read_text(encoding="utf-8")
+# A página dos cards carrega a biblioteca de PDF (jsdelivr), as fontes do Google e envia prints e comprovantes pelo
+# Apps Script do Google; desenha com estilos dentro do HTML. Só esses endereços ficam liberados.
+CSP_CARDS = ("default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
+             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+             "img-src 'self' data: blob: https:; connect-src 'self' https://script.google.com "
+             "https://script.googleusercontent.com; frame-ancestors 'none'; base-uri 'none'; "
+             "form-action 'self' https://script.google.com; object-src 'none'")
 
 # Texto obrigatório perto do botão "Atualizar meus dados" (seção 3 da especificação).
 TEXTO_ATUALIZAR = ("Puxa do SGA os seus contratos e boletos mais recentes. Pode usar 1 vez a cada 15 minutos. "
@@ -36,6 +49,23 @@ def pagina():
 
 
 # ---------------------------------------------------------------- login com Google
+
+def _bloco_json(valor) -> str:
+    """JSON dentro de <script type="application/json">: sem "</" para não fechar o bloco antes da hora."""
+    return json.dumps(valor, ensure_ascii=False).replace("</", "<\\/")
+
+
+@rotas.get("/escritorio", include_in_schema=False)
+def escritorio(db: Session = Depends(banco), p: Pessoa | None = Depends(pessoa_logada)):
+    """Os cards (a página atual, lendo /api/dados e /api/banco)."""
+    if p is None:
+        return RedirectResponse("/", status_code=303)
+    rtcfg = ler_pacote(db, "rtcfg")
+    html = (PAGINA_CARDS.read_text(encoding="utf-8")
+            .replace("__RTCFG__", _bloco_json(rtcfg) if rtcfg is not None else RTCFG_PADRAO)
+            .replace("__MOTIVOS__", _bloco_json(ler_pacote(db, "motivos"))))
+    return HTMLResponse(html, headers={"Content-Security-Policy": CSP_CARDS})
+
 
 @rotas.get("/auth/login", include_in_schema=False)
 async def auth_login(request: Request):
@@ -116,6 +146,56 @@ def api_primeiro_acesso(corpo: CorpoCadastro, request: Request, db: Session = De
 @rotas.post("/api/acesso", dependencies=[Depends(exige_json)])
 def acesso(corpo: CorpoAcesso, request: Request, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
     registrar_acesso(db, p, corpo.aba, ip_do_cliente(request))
+    return {"ok": True}
+
+
+@rotas.get("/api/dados")
+def dados(request: Request, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
+    """O pacote da pessoa logada para os cards (o mesmo formato da página atual)."""
+    resposta = pacote_da_pessoa(db, p)
+    resposta["painel"] = pode_ver_painel(p, config(request))
+    resposta["perfil"]["nome"] = p.nome
+    resposta["perfil"]["equipes"] = lista_de_equipes(p.equipe)
+    return resposta
+
+
+# ---------------------------------------------------------------- banco de marcações da página dos cards
+
+@rotas.get("/api/banco/{colecao}")
+def banco_listar(colecao: str, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
+    return {"docs": bp.listar(db, colecao)}
+
+
+@rotas.post("/api/banco/{colecao}", dependencies=[Depends(exige_json)])
+async def banco_adicionar(colecao: str, request: Request, db: Session = Depends(banco),
+                          p: Pessoa = Depends(exige_pessoa)):
+    return {"id": bp.adicionar(db, colecao, await request.json(), p)}
+
+
+@rotas.get("/api/banco/{colecao}/{doc_id}")
+def banco_ler(colecao: str, doc_id: str, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
+    dados = bp.ler(db, colecao, doc_id)
+    return {"exists": dados is not None, "data": dados}
+
+
+@rotas.put("/api/banco/{colecao}/{doc_id}", dependencies=[Depends(exige_json)])
+async def banco_definir(colecao: str, doc_id: str, request: Request, db: Session = Depends(banco),
+                        p: Pessoa = Depends(exige_pessoa)):
+    bp.definir(db, colecao, doc_id, await request.json(), p)
+    return {"ok": True}
+
+
+@rotas.patch("/api/banco/{colecao}/{doc_id}", dependencies=[Depends(exige_json)])
+async def banco_atualizar(colecao: str, doc_id: str, request: Request, db: Session = Depends(banco),
+                          p: Pessoa = Depends(exige_pessoa)):
+    if not bp.atualizar(db, colecao, doc_id, await request.json(), p):
+        raise HTTPException(404, "Documento não existe.")
+    return {"ok": True}
+
+
+@rotas.delete("/api/banco/{colecao}/{doc_id}", dependencies=[Depends(exige_json)])
+def banco_apagar(colecao: str, doc_id: str, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
+    bp.apagar(db, colecao, doc_id, p)
     return {"ok": True}
 
 
