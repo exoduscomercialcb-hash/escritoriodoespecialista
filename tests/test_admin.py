@@ -80,7 +80,7 @@ def test_aprovar_especialista_exige_sga_equipe_e_lider(admin, novo_cliente, db):
     p, c = _pendente(admin, novo_cliente)
     r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"situacao": "ativo"})
     assert r.status_code == 400
-    assert r.json()["erro"] == "Para aprovar como especialista, preencha: equipe, nome no SGA, líder."
+    assert r.json()["erro"] == "Para aprovar como especialista, preencha: equipe, nome ou matrícula no SGA, líder."
     assert c.get("/api/eu").json()["estado"] == "pendente"
 
     nao_lider = criar_pessoa(db, nome="Nao Lider", email="naolider@exemplo.com.br", tipo="cadastro")
@@ -116,10 +116,10 @@ def test_nome_sga_completo_nao_confunde_nomes_parecidos(admin, novo_cliente, db)
 def test_requisitos_de_lider_e_vendedora(admin, novo_cliente):
     p, _ = _pendente(admin, novo_cliente, tipo="lider", email="l@exemplo.com.br")
     r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"situacao": "ativo"})
-    assert r.json()["erro"] == "Para aprovar como líder, preencha: equipe, nome no SGA."
+    assert r.json()["erro"] == "Para aprovar como líder, preencha: equipe, nome ou matrícula no SGA."
     p, _ = _pendente(admin, novo_cliente, tipo="vendedora_interna", email="v@exemplo.com.br")
     r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"situacao": "ativo"})
-    assert r.json()["erro"] == "Para aprovar como vendedora interna, preencha: nome no SGA."
+    assert r.json()["erro"] == "Para aprovar como vendedora interna, preencha: nome ou matrícula no SGA."
     p, _ = _pendente(admin, novo_cliente, tipo="financeiro", email="f@exemplo.com.br")
     assert admin.patch(f"/api/admin/pessoas/{p['id']}", json={"situacao": "ativo"}).status_code == 200
 
@@ -135,7 +135,7 @@ def test_editar_valida_os_campos(admin, db):
     esp = criar_pessoa(db, nome="Especialista Incompleto", email="inc@exemplo.com.br", tipo="especialista")
     r2 = admin.patch(f"/api/admin/pessoas/{esp.id}", json={"nome": "Especialista Ainda Incompleto"})
     assert r2.status_code == 200  # editar quem já é ativo não exige equipe/SGA/líder (isso só vale para aprovar)
-    assert r2.json()["pessoa"]["faltando"] == ["equipe", "nome no SGA", "líder"]
+    assert r2.json()["pessoa"]["faltando"] == ["equipe", "nome ou matrícula no SGA", "líder"]
     r = admin.patch(url, json={"equipe": "Águias", "nome": "Cadastro Renomeado"})
     assert r.json()["pessoa"]["equipe"] == "Águias" and r.json()["pessoa"]["nome"] == "Cadastro Renomeado"
 

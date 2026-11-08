@@ -87,9 +87,14 @@ def test_tela_de_login(servidor, navegador):
     for largura in (1300, 390):
         ctx, pg, erros = _pagina(navegador, largura)
         pg.goto(servidor + "/")
-        botao = pg.locator("#go")
+        botao = pg.locator("#paEnviar")  # o único botão do Google, travado até preencher CPF e WhatsApp
         expect(botao).to_have_text("Entrar com Google")
-        assert botao.get_attribute("href") == "/auth/login"
+        expect(botao).to_be_disabled()
+        pg.fill("#paCpf", "123.456.789-09")
+        expect(botao).to_be_disabled()
+        pg.fill("#paWhats", "(21) 98765-4321")
+        expect(botao).to_be_enabled()
+        assert pg.locator("#go").count() == 0
         expect(pg.locator(".login-head h1")).to_have_text("Escritório do Especialista")
         expect(pg.locator(".brand")).to_have_text("EXODUS BENEFÍCIOS")
         assert pg.locator("#app").is_hidden()
@@ -124,13 +129,12 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     adm.fill("#novoCpf", cpf_cad)
     adm.click("#novoForm button[type=submit]")
     adm.click('#cadFiltro [data-sit="aguardando"]')
-    expect(adm.locator("#cadLista article")).to_have_count(2)
-    expect(adm.locator("#cadLista article", has_text="Especialista Novo Inventado")).to_contain_text("Aguardando 1º acesso")
+    expect(adm.locator("#cadTabela tr.pessoa")).to_have_count(2)
+    expect(adm.locator("#cadTabela tr.pessoa", has_text="Especialista Novo Inventado")).to_contain_text("Aguardando 1º acesso")
 
     # a pessoa abre o endereço do escritório no celular: primeiro acesso com CPF e WhatsApp, depois o Google
     ctx, pg, erros = _pagina(navegador, 390)
     pg.goto(servidor + "/")
-    expect(pg.locator("#go")).to_have_text("Entrar com Google")
     pg.fill("#paCpf", cpf_inventado(999))
     pg.fill("#paWhats", "(21) 98765-4321")
     pg.click("#paEnviar")
@@ -163,10 +167,14 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     # o admin vê o WhatsApp e o 1º acesso no cadastro
     adm.click('[data-adm="cad"]')
     adm.click('#cadFiltro [data-sit="ativo"]')
-    ativo = adm.locator("#cadLista article", has_text="Especialista Novo Inventado")
-    expect(ativo).to_contain_text("WhatsApp (21) 98765-4321")
+    ativo = adm.locator("#cadTabela tr.pessoa", has_text="Especialista Novo Inventado")
+    expect(ativo).to_contain_text("(21) 98765-4321")  # WhatsApp e e-mail Google preenchidos no primeiro acesso
+    expect(ativo).to_contain_text("especialista.novo@exemplo.com.br")
     expect(ativo).to_contain_text("1º acesso:")
-    expect(ativo).to_contain_text("Líder: Lider Inventado")
+    expect(ativo).to_contain_text("Lider Inventado")
+    # editar abre o cadastro na própria tabela
+    ativo.locator('[data-acao="editar"]').click()
+    expect(adm.locator(f'[data-editor="{ativo.get_attribute("data-pessoa")}"]')).to_be_visible()
 
     # os acessos mostram quem entrou
     adm.click('[data-adm="acs"]')

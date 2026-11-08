@@ -193,3 +193,20 @@ a.btn { justify-content: center; }
 form.pa { display: grid; gap: 12px; }
 .btn.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; font-size: 15px; }
 .btn.gbtn svg { width: 20px; height: 20px; flex: none; }
+
+/* Cadastros em tabela */
+.vtab.cad { min-width: 1100px; }
+.vtab.cad tr.pessoa.bloqueado td { color: var(--warn); }
+.vtab.cad tr.pessoa.pendente td:first-child { box-shadow: inset 4px 0 0 #E0B000; }
+.vtab.cad td .vazio { color: var(--muted); font-style: italic; }
+.vtab.cad tr.editor > td { background: var(--bg); padding: 0; }
+.vtab.cad tr.editor .pc { border: 0; border-radius: 0; background: transparent; }
+.vtab.cad .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.equipes-campo { border: 0; padding: 0; margin: 0; grid-column: 1 / -1; }
+.equipes-campo legend { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.equipes { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.equipes label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-weight: 500; color: var(--fg); font-size: 14px; }
+.equipes input { width: 17px; height: 17px; accent-color: var(--accent); }
+.adm-link { text-align: center; font-size: 12px; margin-top: 4px; }
+.adm-link a { color: var(--muted); }
+.primary[disabled] { opacity: .45; cursor: not-allowed; }

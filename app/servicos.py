@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import date
 
@@ -40,6 +41,43 @@ def limpar_nome_sga(valor: str | None) -> str | None:
     """Nome exatamente como está no SGA, em maiúsculas. É por ele que o especialista é ligado aos dados."""
     nome = limpar_espacos(valor).upper()
     return nome or None
+
+
+def chave(texto: str | None) -> str:
+    """'Pé no Chão' -> 'pe no chao': compara sem acento, sem maiúscula e sem pontuação."""
+    sem_acento = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode()
+    return " ".join("".join(c if c.isalnum() else " " for c in sem_acento.lower()).split())
+
+
+EQUIPE_POR_NOME = {chave(e): e for e in EQUIPES}
+
+
+def limpar_equipes(valor) -> str | None:
+    """Uma ou mais equipes ("ELITE, LUA", "Elite;Lua" ou uma lista) -> "Elite, Lua" (nomes oficiais, sem repetir)."""
+    partes = valor if isinstance(valor, (list, tuple)) else re.split(r"[,;/]", valor or "")
+    equipes: list[str] = []
+    for parte in partes:
+        if not limpar_espacos(parte):
+            continue
+        equipe = EQUIPE_POR_NOME.get(chave(parte))
+        if equipe is None:
+            raise ErroRegra(f"Equipe “{limpar_espacos(parte)}” desconhecida.")
+        if equipe not in equipes:
+            equipes.append(equipe)
+    return ", ".join(equipes) or None
+
+
+def lista_de_equipes(texto: str | None) -> list[str]:
+    return [e.strip() for e in (texto or "").split(",") if e.strip()]
+
+
+def limpar_matricula(valor) -> str | None:
+    texto = limpar_espacos(str(valor) if valor is not None else "")
+    if texto.endswith(".0") and texto[:-2].isdigit():  # Excel às vezes guarda número como 123.0
+        texto = texto[:-2]
+    if len(texto) > 20:
+        raise ErroRegra("Matrícula do SGA muito longa.")
+    return texto or None
 
 
 def so_numeros(valor: str | None) -> str:
@@ -105,11 +143,12 @@ def pode_ver_painel(p: Pessoa | None, cfg: Config) -> bool:
 def pessoa_para_json(p: Pessoa) -> dict:
     return {
         "id": p.id, "nome": p.nome, "email": p.email, "tipo": p.tipo, "tipo_nome": TIPOS.get(p.tipo, p.tipo),
-        "equipe": p.equipe, "nome_sga": p.nome_sga, "lider_id": p.lider_id,
+        "equipe": p.equipe, "equipes": lista_de_equipes(p.equipe), "nome_sga": p.nome_sga,
+        "matricula_sga": p.matricula_sga, "lider_id": p.lider_id,
         "lider_nome": p.lider.nome if p.lider else None, "situacao": p.situacao,
         "cpf": formatar_cpf(p.cpf), "whatsapp": formatar_whatsapp(p.whatsapp),
         "aguardando_primeiro_acesso": p.email is None,
-        "faltando": requisitos_para_aprovar(p.tipo, p.equipe, p.nome_sga, p.lider_id),
+        "faltando": requisitos_para_aprovar(p.tipo, p.equipe, p.nome_sga or p.matricula_sga, p.lider_id),
         "criado_em": iso(p.criado_em), "criado_em_txt": formatar(p.criado_em),
         "aprovado_em_txt": formatar(p.aprovado_em), "aprovado_por": p.aprovado_por,
         "vinculado_em_txt": formatar(p.vinculado_em),
@@ -133,6 +172,8 @@ def concluir_login(db: Session, sessao: dict, cfg: Config, *, email: str, sub: s
     p = achar_pessoa(db, email, sub)
     if p is None and pre:
         p = vincular_pre_cadastro(db, pre, email, sub)
+    elif p is not None and pre and pre.get("id") == p.id and pre.get("whatsapp"):
+        p.whatsapp = pre["whatsapp"]  # quem já tinha acesso e informou um WhatsApp novo na entrada
 
     if email in cfg.admin_emails:  # ADMIN_EMAILS manda: sempre admin e sempre ativo
         if p is None:
@@ -182,10 +223,11 @@ def vincular_pre_cadastro(db: Session, pre: dict, email: str, sub: str | None) -
 
 
 def primeiro_acesso(db: Session, sessao: dict, cpf: str, whatsapp: str, ip: str | None) -> str:
-    """Primeiro acesso: CPF (acha o cadastro feito pela coordenação) e WhatsApp. Devolve para onde seguir.
+    """Entrada (decisão de 08/11: CPF e WhatsApp antes do Google, sempre). Devolve para onde seguir.
 
+    O CPF acha o cadastro feito pela coordenação. No primeiro acesso, a conta Google com que a pessoa entrar fica
+    ligada a ele; depois, só entra com essa mesma conta. O WhatsApp informado atualiza o cadastro.
     Se a pessoa já entrou com o Google (e a conta ainda não estava ligada), liga na hora.
-    Se ainda não, guarda o cadastro achado e manda para o login do Google.
     """
     cpf, whatsapp = limpar_cpf(cpf), limpar_whatsapp(whatsapp)
     p = db.scalars(select(Pessoa).where(Pessoa.cpf == cpf)).first()
@@ -193,11 +235,11 @@ def primeiro_acesso(db: Session, sessao: dict, cpf: str, whatsapp: str, ip: str 
         raise ErroRegra("Não encontramos um cadastro com esse CPF. Fale com a coordenação.")
     if p.situacao == "bloqueado":
         raise ErroRegra(MSG_NAO_LIBERADO)
-    if p.email is not None:
-        raise ErroRegra("Esse CPF já está ligado a uma conta Google. Clique em Entrar com Google e use essa conta. "
-                        "Se trocou de conta, fale com a coordenação.")
     google = sessao.get("google")
     if google and google.get("email"):
+        if p.email is not None:
+            raise ErroRegra("Esse CPF está ligado a outra conta Google. Entre com a conta que você usou no primeiro "
+                            "acesso. Se trocou de conta, fale com a coordenação.")
         if achar_pessoa(db, google["email"], google.get("sub")) is not None:
             raise ErroRegra("Esta conta Google já está ligada a outro cadastro. Fale com a coordenação.")
         ligar_conta_google(p, google["email"], google.get("sub"), whatsapp)
@@ -211,7 +253,7 @@ def requisitos_para_aprovar(tipo: str, equipe: str | None, nome_sga: str | None,
     if tipo in {"especialista", "lider"} and not equipe:
         faltando.append("equipe")
     if tipo in {"especialista", "lider", "vendedora_interna"} and not nome_sga:
-        faltando.append("nome no SGA")
+        faltando.append("nome ou matrícula no SGA")
     if tipo == "especialista" and not lider_id:
         faltando.append("líder")
     return faltando
@@ -222,7 +264,10 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
     novo = {
         "nome": alvo.nome, "tipo": alvo.tipo, "equipe": alvo.equipe, "nome_sga": alvo.nome_sga,
         "lider_id": alvo.lider_id, "situacao": alvo.situacao, "cpf": alvo.cpf, "whatsapp": alvo.whatsapp,
+        "matricula_sga": alvo.matricula_sga,
     }
+    if "matricula_sga" in dados:
+        novo["matricula_sga"] = limpar_matricula(dados["matricula_sga"])
     if "cpf" in dados:
         novo["cpf"] = limpar_cpf(dados["cpf"]) if so_numeros(dados["cpf"]) else None
         if novo["cpf"] and db.scalars(select(Pessoa).where(Pessoa.cpf == novo["cpf"], Pessoa.id != alvo.id)).first():
@@ -236,10 +281,7 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
             raise ErroRegra("Tipo de acesso desconhecido.")
         novo["tipo"] = dados["tipo"]
     if "equipe" in dados:
-        equipe = limpar_espacos(dados["equipe"]) or None
-        if equipe is not None and equipe not in EQUIPES:
-            raise ErroRegra("Equipe desconhecida.")
-        novo["equipe"] = equipe
+        novo["equipe"] = limpar_equipes(dados["equipe"])
     if "nome_sga" in dados:
         novo["nome_sga"] = limpar_nome_sga(dados["nome_sga"])
     if "lider_id" in dados:
@@ -262,7 +304,8 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
     if alvo.email and alvo.email in cfg.admin_emails and (novo["tipo"] != "admin" or novo["situacao"] != "ativo"):
         raise ErroRegra("Este e-mail está em ADMIN_EMAILS no Render: continua administrador e ativo.")
     if novo["situacao"] == "ativo" and alvo.situacao != "ativo":  # aprovar um pendente ou liberar um bloqueado
-        faltando = requisitos_para_aprovar(novo["tipo"], novo["equipe"], novo["nome_sga"], novo["lider_id"])
+        faltando = requisitos_para_aprovar(novo["tipo"], novo["equipe"], novo["nome_sga"] or novo["matricula_sga"],
+                                           novo["lider_id"])
         if faltando:
             raise ErroRegra(f"Para aprovar como {TIPOS[novo['tipo']].lower()}, preencha: " + ", ".join(faltando) + ".")
 
@@ -292,8 +335,9 @@ def relatorio_acessos(db: Session, *, pessoa_id: int | None = None, equipe: str 
     filtros = []
     if pessoa_id:
         filtros.append(Acesso.pessoa_id == pessoa_id)
-    if equipe:
-        filtros.append(Pessoa.equipe == equipe)
+    if equipe:  # a pessoa pode ter mais de uma equipe ("Elite, Lua")
+        filtros.append(or_(Pessoa.equipe == equipe, Pessoa.equipe.like(f"{equipe}, %"),
+                           Pessoa.equipe.like(f"%, {equipe}"), Pessoa.equipe.like(f"%, {equipe}, %")))
     if de:
         filtros.append(Acesso.data_hora >= inicio_do_dia(de))
     if ate:

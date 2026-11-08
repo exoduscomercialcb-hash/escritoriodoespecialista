@@ -25,6 +25,7 @@ class CorpoPessoa(BaseModel):
     situacao: str | None = None
     cpf: str | None = None
     whatsapp: str | None = None
+    matricula_sga: str | None = None
 
 
 class CorpoPessoaNova(BaseModel):
@@ -35,6 +36,7 @@ class CorpoPessoaNova(BaseModel):
     nome_sga: str | None = None
     lider_id: int | None = None
     whatsapp: str | None = None
+    matricula_sga: str | None = None
 
 
 class CorpoPlanilha(BaseModel):
@@ -60,7 +62,8 @@ def listar_pessoas(situacao: str | None = None, q: str | None = None, db: Sessio
     if termo:
         numeros = so_numeros(termo)
         pessoas = [p for p in pessoas
-                   if termo in " ".join(filter(None, [p.nome, p.email, p.nome_sga, p.equipe, TIPOS.get(p.tipo)])).lower()
+                   if termo in " ".join(filter(None, [p.nome, p.email, p.nome_sga, p.equipe, p.matricula_sga,
+                                                      TIPOS.get(p.tipo)])).lower()
                    or (len(numeros) >= 4 and numeros in (p.cpf or "") + " " + (p.whatsapp or ""))]
     return {"pessoas": [pessoa_para_json(p) for p in pessoas]}
 

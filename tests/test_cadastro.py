@@ -66,11 +66,29 @@ def test_cpf_e_whatsapp_invalidos(admin, novo_cliente):
     assert c.post("/api/primeiro-acesso", json={"cpf": cpf_inventado(5)}).status_code == 422
 
 
-def test_cpf_ja_ligado_a_outra_conta(admin, novo_cliente):
-    pre_cadastro(admin, cpf=cpf_inventado(6))
+def test_quem_ja_tem_acesso_entra_de_novo_pelo_cpf_e_atualiza_o_whatsapp(admin, novo_cliente, db):
+    """A tela de entrada pede CPF e WhatsApp sempre; quem já tem acesso entra e o WhatsApp novo fica gravado."""
+    p = pre_cadastro(admin, cpf=cpf_inventado(6))
     primeiro_acesso(novo_cliente(), cpf_inventado(6), NOVO)
-    r = _post(novo_cliente(), cpf_inventado(6))
-    assert r.status_code == 400 and "já está ligado a uma conta Google" in r.json()["erro"]
+    c = novo_cliente()
+    assert _post(c, cpf_inventado(6), "(21) 91111-2222").json()["proximo"] == "/auth/login"
+    assert entrar(c, NOVO).headers["location"] == "/"
+    assert c.get("/api/eu").json()["estado"] == "ativo"
+    pessoa = db.get(Pessoa, p["id"])
+    db.refresh(pessoa)
+    assert pessoa.whatsapp == "21911112222"
+
+
+def test_cpf_ligado_nao_deixa_entrar_com_outra_conta_google(admin, novo_cliente, db):
+    pre_cadastro(admin, cpf=cpf_inventado(14))
+    primeiro_acesso(novo_cliente(), cpf_inventado(14), NOVO)
+    c = novo_cliente()
+    _post(c, cpf_inventado(14))
+    entrar(c, "outra.conta@exemplo.com.br")
+    assert c.get("/api/eu").json()["estado"] == "sem_cadastro"
+    r = _post(c, cpf_inventado(14))  # já com a outra conta Google na sessão
+    assert r.status_code == 400 and "ligado a outra conta Google" in r.json()["erro"]
+    assert db.scalars(select(Pessoa).where(Pessoa.email == "outra.conta@exemplo.com.br")).all() == []
 
 
 def test_conta_google_ja_ligada_nao_pega_outro_cpf(admin, novo_cliente, db):

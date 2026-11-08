@@ -75,6 +75,9 @@ O painel do administrador mostra o horário da última atualização bem-sucedid
 > - Se a pessoa clicar direto em "Entrar com Google" no primeiro acesso, o sistema pede CPF e WhatsApp em seguida.
 > - O WhatsApp informado é gravado no cadastro (a coordenação não tinha os telefones).
 > - O administrador (Rafael) vê o card do painel e, a partir da etapa 3, todos os cards e todas as equipes.
+> - **Tela de entrada:** CPF e WhatsApp em cima e um botão só, **Entrar com Google**, embaixo, liberado depois dos dois preenchidos (senão as pessoas não preenchem o telefone). Vale para todas as entradas; o WhatsApp novo atualiza o cadastro. Quem tentar entrar com outra conta Google que não a ligada ao CPF não entra.
+> - **Cadastros em tabela**, com as colunas **E-mail Google** e **WhatsApp**, que se preenchem no primeiro acesso.
+> - A planilha de hoje (Usuário, Tipo de conta, Nome, Equipe(s), CPF, Matrícula SGA) entra como está: "liderado" = especialista, "INSIDE SALES" = vendedora interna, "SENHA FINANCEIRO" = financeiro, "SENHA MASTER" = o próprio Rafael (o CPF é ligado ao cadastro de administrador). Uma pessoa pode ter **mais de uma equipe**. A **Matrícula SGA** fica no cadastro e vale no lugar do nome no SGA. Sem a coluna Líder, o liderado fica com o líder da equipe dele quando só um líder cuida dela.
 
 ## 5. Painel do administrador
 Card novo no menu principal, só para `admin` (e a coordenação, se o Rafael liberar):

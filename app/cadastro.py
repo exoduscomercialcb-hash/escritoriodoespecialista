@@ -8,41 +8,37 @@
 from __future__ import annotations
 
 import csv
-import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .config import EQUIPES, TIPOS
+from .config import TIPOS
 from .db import Pessoa
-from .servicos import (ErroRegra, limpar_cpf, limpar_espacos, limpar_nome, limpar_nome_sga, limpar_whatsapp,
-                       so_numeros)
+from .servicos import (ErroRegra, chave, limpar_cpf, limpar_equipes, limpar_espacos, limpar_matricula, limpar_nome,
+                       limpar_nome_sga, limpar_whatsapp, lista_de_equipes, so_numeros)
 from .tempo import agora
 
-MODELO_PLANILHA = "﻿Nome;Tipo de conta;CPF;Equipe;Nome no SGA;Líder;WhatsApp\r\n"
+MODELO_PLANILHA = "﻿Nome;Tipo de conta;CPF;Equipe;Matrícula SGA;Nome no SGA;Líder;WhatsApp\r\n"
 LIMITE_DE_LINHAS = 2000
-
-
-def chave(texto: str | None) -> str:
-    """'Pé no Chão' -> 'pe no chao': compara sem acento, sem maiúscula e sem pontuação."""
-    sem_acento = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode()
-    return " ".join("".join(c if c.isalnum() else " " for c in sem_acento.lower()).split())
 
 
 COLUNAS = {
     "nome": {"nome", "nome completo"},
     "tipo": {"tipo", "tipo de conta", "tipo de acesso", "conta", "acesso"},
     "cpf": {"cpf"},
-    "equipe": {"equipe"},
+    "equipe": {"equipe", "equipes", "equipe s"},
     "nome_sga": {"nome no sga", "nome sga", "sga"},
+    "matricula_sga": {"matricula sga", "matricula no sga", "matricula do sga", "matricula"},
     "lider": {"lider", "lider da equipe"},
     "whatsapp": {"whatsapp", "whats", "telefone", "celular"},
 }
 TIPO_POR_NOME = {chave(k): k for k in TIPOS} | {chave(v): k for k, v in TIPOS.items()} | {
     "administrador": "admin", "coordenador": "coordenacao", "coordenadora": "coordenacao", "lideranca": "lider",
     "liderado": "especialista", "vendedora": "vendedora_interna", "vendedor interno": "vendedora_interna",
-    "vendedora interna": "vendedora_interna"}
-EQUIPE_POR_NOME = {chave(e): e for e in EQUIPES}
+    "vendedora interna": "vendedora_interna", "inside sales": "vendedora_interna",
+    # nomes usados na planilha de senhas do sistema atual
+    "senha master": "admin", "senha financeiro": "financeiro", "senha coordenacao": "coordenacao",
+    "senha cadastro": "cadastro"}
 
 
 # ---------------------------------------------------------------- cadastro um por um
@@ -56,15 +52,6 @@ def _tipo(valor: str | None, quem: Pessoa) -> str:
     return tipo
 
 
-def _equipe(valor: str | None) -> str | None:
-    if not limpar_espacos(valor):
-        return None
-    equipe = EQUIPE_POR_NOME.get(chave(valor))
-    if equipe is None:
-        raise ErroRegra(f"Equipe “{limpar_espacos(valor)}” desconhecida.")
-    return equipe
-
-
 def criar_pre_cadastro(db: Session, dados: dict, quem: Pessoa) -> Pessoa:
     cpf = limpar_cpf(dados.get("cpf"))
     if db.scalars(select(Pessoa).where(Pessoa.cpf == cpf)).first():
@@ -75,8 +62,8 @@ def criar_pre_cadastro(db: Session, dados: dict, quem: Pessoa) -> Pessoa:
         if lider is None or lider.tipo != "lider":
             raise ErroRegra("Escolha um líder da lista.")
     p = Pessoa(nome=limpar_nome(dados.get("nome")), tipo=_tipo(dados.get("tipo"), quem), cpf=cpf,
-               equipe=_equipe(dados.get("equipe")), nome_sga=limpar_nome_sga(dados.get("nome_sga")),
-               lider_id=lider_id,
+               equipe=limpar_equipes(dados.get("equipe")), nome_sga=limpar_nome_sga(dados.get("nome_sga")),
+               matricula_sga=limpar_matricula(dados.get("matricula_sga")), lider_id=lider_id,
                whatsapp=limpar_whatsapp(dados["whatsapp"]) if so_numeros(dados.get("whatsapp")) else None,
                situacao="ativo", aprovado_em=agora(), aprovado_por=quem.email)
     db.add(p)
@@ -120,7 +107,7 @@ def ler_planilha(texto: str) -> list[dict]:
 def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
     """Confere a planilha inteira; se alguma linha tiver erro, não grava nada e devolve a lista de erros.
 
-    Quem já tem cadastro (mesmo CPF) é atualizado (nome, tipo, equipe, nome no SGA, líder e WhatsApp);
+    Quem já tem cadastro (mesmo CPF) é atualizado (nome, tipo, equipe, matrícula e nome no SGA, líder e WhatsApp);
     e-mail Google, situação e acessos não mudam.
     """
     erros: list[dict] = []
@@ -134,8 +121,8 @@ def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
             linha_do_cpf[cpf] = r["linha"]
             prontos.append({
                 "linha": r["linha"], "cpf": cpf, "nome": limpar_nome(r.get("nome")),
-                "tipo": _tipo(r.get("tipo"), quem), "equipe": _equipe(r.get("equipe")),
-                "nome_sga": limpar_nome_sga(r.get("nome_sga")),
+                "tipo": _tipo(r.get("tipo"), quem), "equipe": limpar_equipes(r.get("equipe")),
+                "nome_sga": limpar_nome_sga(r.get("nome_sga")), "matricula_sga": limpar_matricula(r.get("matricula_sga")),
                 "whatsapp": limpar_whatsapp(r["whatsapp"]) if so_numeros(r.get("whatsapp")) else None,
                 "lider": limpar_espacos(r.get("lider")) or None,
             })
@@ -143,6 +130,13 @@ def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
             erros.append({"linha": r["linha"], "mensagem": str(e)})
 
     existentes = {p.cpf: p for p in db.scalars(select(Pessoa).where(Pessoa.cpf.in_(list(linha_do_cpf))))}
+    # A linha de administrador da planilha ("SENHA MASTER") é o próprio administrador que está importando:
+    # o CPF é ligado ao cadastro dele, em vez de criar uma segunda pessoa.
+    linhas_admin_novas = [r for r in prontos if r["tipo"] == "admin" and r["cpf"] not in existentes]
+    ligado_ao_admin = False
+    if quem.tipo == "admin" and quem.cpf is None and len(linhas_admin_novas) == 1:
+        existentes[linhas_admin_novas[0]["cpf"]] = quem
+        ligado_ao_admin = True
     for r in prontos:
         atual = existentes.get(r["cpf"])
         if atual is not None and quem.tipo != "admin" and "admin" in {atual.tipo, r["tipo"]}:
@@ -173,8 +167,13 @@ def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
             criados += 1
         else:
             atualizados += 1
-        p.nome, p.tipo, p.equipe = r["nome"], r["tipo"], r["equipe"] or p.equipe
+        if p is quem:
+            p.cpf = r["cpf"]  # o tipo e a situação do administrador não mudam
+        else:
+            p.tipo = r["tipo"]
+        p.nome, p.equipe = r["nome"], r["equipe"] or p.equipe
         p.nome_sga = r["nome_sga"] or p.nome_sga
+        p.matricula_sga = r["matricula_sga"] or p.matricula_sga
         p.whatsapp = r["whatsapp"] or p.whatsapp
         gravados[r["cpf"]] = p
     db.flush()
@@ -189,5 +188,19 @@ def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
             lider_id = id_do_lider[chave(r["lider"])]
             if lider_id != gravados[r["cpf"]].id:
                 gravados[r["cpf"]].lider_id = lider_id
+
+    # Sem a coluna Líder: o liderado fica com o líder da equipe dele, quando só um líder cuida dessa(s) equipe(s).
+    lideres = [p for p in db.scalars(select(Pessoa).where(Pessoa.tipo == "lider", Pessoa.situacao != "bloqueado"))]
+    pela_equipe = 0
+    for r in prontos:
+        p = gravados[r["cpf"]]
+        if r["tipo"] != "especialista" or r["lider"] or p.lider_id:
+            continue
+        equipes = set(lista_de_equipes(p.equipe))
+        candidatos = [lid for lid in lideres if equipes & set(lista_de_equipes(lid.equipe))]
+        if len(candidatos) == 1:
+            p.lider_id = candidatos[0].id
+            pela_equipe += 1
     db.commit()
-    return {"importado": True, "criados": criados, "atualizados": atualizados, "erros": []}
+    return {"importado": True, "criados": criados, "atualizados": atualizados, "erros": [],
+            "lideres_pela_equipe": pela_equipe, "ligado_ao_admin": ligado_ao_admin}

@@ -70,9 +70,9 @@ Elas ficam trancadas para a API pública do Supabase: só o servidor do Escritó
    Você cai no menu principal com o card **Painel do administrador**.
 2. No painel, em **Cadastros**, use **Importar planilha** (copie do Excel e cole) ou **Novo cadastro**.
    O mínimo é **Nome, Tipo de conta e CPF**. A pessoa aparece como **Aguardando 1º acesso**.
-3. Mande para a pessoa só o endereço do escritório. No **primeiro acesso**, ela informa **CPF e WhatsApp**
-   e clica em **Continuar com Google**. Pronto: entra direto, e o WhatsApp fica gravado no cadastro dela.
-4. Das próximas vezes, ela só clica em **Entrar com Google**.
+3. Mande para a pessoa só o endereço do escritório. Ela informa **CPF e WhatsApp** e o botão
+   **Entrar com Google** libera. Pronto: entra direto, e o e-mail Google e o WhatsApp aparecem no cadastro dela.
+4. Das próximas vezes, é a mesma tela (CPF, WhatsApp e Entrar com Google), sempre com a mesma conta Google.
 5. Em **Acessos**, aparecem as entradas e as abas abertas de cada pessoa.
 
 ## 5. GitHub: só entra na `main` com os testes passando

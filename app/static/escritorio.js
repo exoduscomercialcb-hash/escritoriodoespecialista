@@ -48,18 +48,26 @@
     email: 'Sua conta Google não tem o e-mail confirmado. Use outra conta.',
   };
 
-  // Primeiro acesso: CPF (acha o cadastro feito pela coordenação) e WhatsApp (contato). Depois, o Google.
+  // Entrada: CPF (acha o cadastro feito pela coordenação) e WhatsApp (contato). O botão do Google só libera
+  // depois dos dois preenchidos (decisão de 08/11: senão as pessoas não preenchem o telefone).
   function formPrimeiroAcesso(jaEntrou) {
     const cpf = h('input', { class: 'field', id: 'paCpf', name: 'cpf', inputmode: 'numeric', autocomplete: 'off', required: true, maxlength: 14, placeholder: '000.000.000-00' });
     const whats = h('input', { class: 'field', id: 'paWhats', name: 'whatsapp', type: 'tel', inputmode: 'tel', autocomplete: 'tel', required: true, maxlength: 20, placeholder: '(21) 98765-4321' });
     const erro = h('p', { class: 'err', id: 'paErro', hidden: true });
-    const enviar = jaEntrou ? h('button', { class: 'primary', type: 'submit', id: 'paEnviar' }, 'Liberar meu acesso')
-      : h('button', { class: 'btn sec gbtn', type: 'submit', id: 'paEnviar' }, svg(G_ICON), 'Continuar com Google');
+    const enviar = jaEntrou ? h('button', { class: 'primary', type: 'submit', id: 'paEnviar', disabled: true }, 'Liberar meu acesso')
+      : h('button', { class: 'primary gbtn', type: 'submit', id: 'paEnviar', disabled: true }, svg(G_ICON), 'Entrar com Google');
+    const aviso = h('p', { class: 'hint', id: 'paAviso' }, 'Preencha o CPF e o WhatsApp para liberar o botão.');
+    const numeros = v => v.replace(/\D/g, '');
+    const confere = () => {
+      const ok = numeros(cpf.value).length === 11 && numeros(whats.value).length >= 10;
+      enviar.disabled = !ok; aviso.hidden = ok;
+    };
+    cpf.addEventListener('input', confere); whats.addEventListener('input', confere);
     return h('form', { class: 'pa', id: 'paForm', onsubmit: async ev => {
       ev.preventDefault(); erro.hidden = true; enviar.disabled = true;
       try { const r = await api('/api/primeiro-acesso', { corpo: { cpf: cpf.value, whatsapp: whats.value } }); location.assign(r.proximo); }
       catch (e) { erro.textContent = e.message; erro.hidden = false; enviar.disabled = false; }
-    } }, h('label', { for: 'paCpf' }, 'CPF', cpf), h('label', { for: 'paWhats' }, 'WhatsApp (com DDD)', whats), erro, enviar);
+    } }, h('label', { for: 'paCpf' }, 'CPF', cpf), h('label', { for: 'paWhats' }, 'WhatsApp (com DDD)', whats), erro, enviar, aviso);
   }
 
   function telaAnonimo(eu) {
@@ -68,11 +76,9 @@
       eu.aviso ? h('p', { class: 'ok-msg' }, eu.aviso) : null,
       erro ? h('p', { class: 'err' }, erro) : null,
       eu.google_configurado === false ? h('p', { class: 'err' }, 'O login com Google ainda não foi configurado no servidor.') : null,
-      botaoGoogle('/auth/login'),
-      h('p', { class: 'hint' }, 'Já fez o primeiro acesso? É só entrar com a sua conta Google.'),
-      h('div', { class: 'sep' }, h('span', {}, 'Primeiro acesso')),
-      h('p', { class: 'hint' }, 'Informe o seu CPF e o seu WhatsApp e continue com a sua conta Google. Ela passa a ser o seu acesso ao escritório.'),
-      formPrimeiroAcesso(false));
+      h('p', { class: 'hint' }, 'Informe o seu CPF e o seu WhatsApp e entre com a sua conta Google. No primeiro acesso, essa conta Google passa a ser o seu acesso ao escritório.'),
+      formPrimeiroAcesso(false),
+      h('p', { class: 'hint adm-link' }, h('a', { href: '/auth/login', id: 'entrarAdmin' }, 'Acesso do administrador')));
   }
 
   function telaSemCadastro(eu) {
@@ -164,7 +170,7 @@
   const opcoesSelect = (lista, atual, vazio) => [...(vazio !== undefined ? [h('option', { value: '' }, vazio)] : []),
     ...lista.map(o => h('option', { value: o.id, selected: String(o.id) === String(atual ?? '') }, o.nome))];
 
-  /* Cadastros */
+  /* Cadastros (tabela: uma linha por pessoa; E-mail Google e WhatsApp se preenchem no primeiro acesso) */
   let filtroSit = '', buscaT;
   document.querySelectorAll('#cadFiltro [data-sit]').forEach(b => b.addEventListener('click', () => {
     filtroSit = b.dataset.sit;
@@ -173,36 +179,73 @@
   }));
   $('cadBusca').addEventListener('input', () => { clearTimeout(buscaT); buscaT = setTimeout(carregarCadastros, 250); });
 
+  const vazio = txt => h('span', { class: 'vazio' }, txt);
+  const opcoesLider = (atual, menos) => opcoesSelect(OP.lideres.filter(l => l.id !== menos).map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), atual, 'Sem líder');
+
+  function caixasEquipes(marcadas) {
+    const caixa = h('div', { class: 'equipes' }, ...OP.equipes.map(e => h('label', {}, h('input', { type: 'checkbox', value: e, checked: (marcadas || []).includes(e) }), e)));
+    caixa.valor = () => [...caixa.querySelectorAll('input:checked')].map(i => i.value);
+    return caixa;
+  }
+
   async function carregarCadastros() {
     const q = new URLSearchParams({ situacao: filtroSit, q: $('cadBusca').value });
     let r;
     try { r = await api('/api/admin/pessoas?' + q); } catch (e) { toast(e.message); return; }
-    $('cadLista').replaceChildren(...(r.pessoas.length ? r.pessoas.map(cartaoPessoa)
-      : [h('p', { class: 'empty' }, filtroSit === 'pendente' ? 'Nenhum cadastro pendente.' : 'Nenhum cadastro encontrado.')]));
+    $('cadTotal').textContent = r.pessoas.length + (r.pessoas.length === 1 ? ' cadastro' : ' cadastros');
+    $('cadTabela').replaceChildren(
+      h('thead', {}, h('tr', {}, ...['Nome', 'Tipo', 'Equipe(s)', 'Líder', 'Matrícula SGA', 'CPF', 'WhatsApp', 'E-mail Google', 'Situação', ''].map(t => h('th', {}, t)))),
+      h('tbody', {}, ...(r.pessoas.length ? r.pessoas.flatMap(linhasPessoa)
+        : [h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'Nenhum cadastro encontrado.'))])));
     prepararNovo();
+  }
+
+  function linhasPessoa(p) {
+    const eu = p.id === EU.pessoa.id;
+    const [chipCls, chipTxt] = SIT_CHIP[p.situacao] || ['chip', p.situacao];
+    const aguardando = p.aguardando_primeiro_acesso && p.situacao !== 'bloqueado';
+    const editor = h('tr', { class: 'editor', hidden: true }, h('td', { colspan: 10 }, editorPessoa(p)));
+    const botao = h('button', { type: 'button', class: 'btn', 'data-acao': 'editar', onclick: () => { editor.hidden = !editor.hidden; botao.textContent = editor.hidden ? 'Editar' : 'Fechar'; } }, 'Editar');
+    const linha = h('tr', { class: 'pessoa ' + p.situacao, 'data-pessoa': p.id },
+      h('td', {}, h('b', {}, p.nome), eu ? h('small', { class: 'sub' }, 'Você') : null),
+      h('td', { class: 'nw' }, p.tipo_nome),
+      h('td', {}, p.equipe || vazio('—')),
+      h('td', {}, p.lider_nome || (p.tipo === 'especialista' ? vazio('sem líder') : '—')),
+      h('td', { class: 'nw' }, p.matricula_sga || vazio('—')),
+      h('td', { class: 'nw' }, p.cpf || vazio('—')),
+      h('td', { class: 'nw' }, p.whatsapp || vazio('1º acesso')),
+      h('td', {}, p.email || vazio('1º acesso')),
+      h('td', {}, h('div', { class: 'chips' },
+        aguardando ? h('span', { class: 'chip aguarda' }, 'Aguardando 1º acesso') : h('span', { class: chipCls }, chipTxt),
+        p.faltando.length ? h('span', { class: 'chip alert', title: 'Falta: ' + p.faltando.join(', ') }, 'Falta: ' + p.faltando.join(', ')) : null),
+        p.vinculado_em_txt ? h('small', { class: 'sub' }, '1º acesso: ' + p.vinculado_em_txt) : null),
+      h('td', {}, botao));
+    if (p.situacao === 'pendente') { editor.hidden = false; botao.textContent = 'Fechar'; }
+    return [linha, editor];
   }
 
   function prepararNovo() {
     if ($('novoTipo').options.length) {  // só atualiza a lista de líderes
-      $('novoLider').replaceChildren(...opcoesSelect(OP.lideres.map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), $('novoLider').value, 'Sem líder'));
+      $('novoLider').replaceChildren(...opcoesLider($('novoLider').value));
       return;
     }
     $('novoTipo').replaceChildren(...opcoesSelect(OP.tipos.filter(t => t.id !== 'admin' || EU.pessoa.tipo === 'admin'), 'especialista'));
-    $('novoEquipe').replaceChildren(...opcoesSelect(OP.equipes.map(e => ({ id: e, nome: e })), '', 'Sem equipe'));
-    $('novoLider').replaceChildren(...opcoesSelect(OP.lideres.map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), '', 'Sem líder'));
+    $('novoEquipes').replaceWith(Object.assign(caixasEquipes([]), { id: 'novoEquipes' }));
+    $('novoLider').replaceChildren(...opcoesLider(''));
     const ajusta = () => { $('novoLiderCampo').hidden = $('novoTipo').value !== 'especialista'; };
     $('novoTipo').addEventListener('change', ajusta); ajusta();
   }
 
   $('novoForm').addEventListener('submit', async ev => {
     ev.preventDefault(); $('novoErro').hidden = true;
-    const corpo = { nome: $('novoNome').value, tipo: $('novoTipo').value, cpf: $('novoCpf').value, equipe: $('novoEquipe').value || null,
-      nome_sga: $('novoSga').value || null, whatsapp: $('novoWhats').value || null,
+    const corpo = { nome: $('novoNome').value, tipo: $('novoTipo').value, cpf: $('novoCpf').value, equipe: $('novoEquipes').valor().join(', ') || null,
+      nome_sga: $('novoSga').value || null, matricula_sga: $('novoMatricula').value || null, whatsapp: $('novoWhats').value || null,
       lider_id: $('novoTipo').value === 'especialista' && $('novoLider').value ? Number($('novoLider').value) : null };
     try {
       await api('/api/admin/pessoas', { corpo });
       toast('Cadastro feito. No primeiro acesso, a pessoa informa o CPF e entra com o Google.');
-      for (const id of ['novoNome', 'novoCpf', 'novoSga', 'novoWhats']) $(id).value = '';
+      for (const id of ['novoNome', 'novoCpf', 'novoSga', 'novoMatricula', 'novoWhats']) $(id).value = '';
+      $('novoEquipes').querySelectorAll('input').forEach(i => { i.checked = false; });
       OP = await api('/api/admin/opcoes'); carregarCadastros();
     } catch (e) { $('novoErro').textContent = e.message; $('novoErro').hidden = false; }
   });
@@ -217,7 +260,9 @@
     try {
       const r = await api('/api/admin/importar', { corpo: { texto: $('impTexto').value } });
       if (r.importado) {
-        res.replaceChildren(h('p', { class: 'ok-msg' }, 'Planilha importada: ' + r.criados + ' cadastro(s) novo(s) e ' + r.atualizados + ' atualizado(s).'));
+        const extras = [r.lideres_pela_equipe ? r.lideres_pela_equipe + ' liderado(s) ligado(s) ao líder pela equipe' : null,
+          r.ligado_ao_admin ? 'o CPF de administrador foi ligado ao seu cadastro' : null].filter(Boolean);
+        res.replaceChildren(h('p', { class: 'ok-msg' }, 'Planilha importada: ' + r.criados + ' cadastro(s) novo(s) e ' + r.atualizados + ' atualizado(s)' + (extras.length ? '; ' + extras.join('; ') : '') + '.'));
         $('impTexto').value = ''; OP = await api('/api/admin/opcoes'); carregarCadastros();
       } else {
         res.replaceChildren(h('p', { class: 'err' }, 'Nada foi gravado. Corrija estas linhas da planilha e importe de novo:'),
@@ -227,59 +272,45 @@
     $('impEnviar').disabled = false;
   });
 
-  function cartaoPessoa(p) {
+  function editorPessoa(p) {
     const eu = p.id === EU.pessoa.id;
-    const [chipCls, chipTxt] = SIT_CHIP[p.situacao] || ['chip', p.situacao];
     const f = {
       nome: h('input', { class: 'field', value: p.nome, maxlength: 120 }),
       tipo: h('select', { class: 'field', disabled: eu }, ...opcoesSelect(OP.tipos, p.tipo)),
-      equipe: h('select', { class: 'field' }, ...opcoesSelect(OP.equipes.map(e => ({ id: e, nome: e })), p.equipe, 'Sem equipe')),
+      equipes: caixasEquipes(p.equipes),
+      matricula_sga: h('input', { class: 'field', value: p.matricula_sga || '', maxlength: 20 }),
       nome_sga: h('input', { class: 'field', value: p.nome_sga || '', maxlength: 160, placeholder: 'EX.: JOAO DA SILVA' }),
-      lider_id: h('select', { class: 'field' }, ...opcoesSelect(OP.lideres.filter(l => l.id !== p.id).map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), p.lider_id, 'Sem líder')),
+      lider_id: h('select', { class: 'field' }, ...opcoesLider(p.lider_id, p.id)),
       cpf: h('input', { class: 'field', value: p.cpf || '', inputmode: 'numeric', maxlength: 14 }),
       whatsapp: h('input', { class: 'field', value: p.whatsapp || '', type: 'tel', maxlength: 20 }),
     };
     const campoLider = h('label', {}, 'Líder', f.lider_id);
     const ajustaLider = () => { campoLider.hidden = f.tipo.value !== 'especialista'; };
     f.tipo.addEventListener('change', ajustaLider); ajustaLider();
-    const form = h('div', { class: 'pc-form', hidden: p.situacao !== 'pendente' },
-      h('label', {}, 'Nome', f.nome), h('label', {}, 'Tipo de acesso', f.tipo), h('label', {}, 'Equipe', f.equipe),
+    const form = h('div', { class: 'pc-form' },
+      h('label', {}, 'Nome', f.nome), h('label', {}, 'Tipo de conta', f.tipo),
+      h('label', {}, 'Matrícula SGA', f.matricula_sga),
       h('label', {}, 'Nome no SGA ', h('small', {}, '(exatamente como está no SGA)'), f.nome_sga), campoLider,
-      h('label', {}, 'CPF', f.cpf), h('label', {}, 'WhatsApp', f.whatsapp));
+      h('label', {}, 'CPF', f.cpf), h('label', {}, 'WhatsApp', f.whatsapp),
+      h('fieldset', { class: 'equipes-campo' }, h('legend', {}, 'Equipe(s)'), f.equipes));
     const erro = h('p', { class: 'err', hidden: true });
-    const valores = () => ({ nome: f.nome.value, tipo: f.tipo.value, equipe: f.equipe.value || null, nome_sga: f.nome_sga.value || null,
+    const valores = () => ({ nome: f.nome.value, tipo: f.tipo.value, equipe: f.equipes.valor().join(', ') || null,
+      nome_sga: f.nome_sga.value || null, matricula_sga: f.matricula_sga.value || null,
       cpf: f.cpf.value || null, whatsapp: f.whatsapp.value || null,
       lider_id: f.tipo.value === 'especialista' && f.lider_id.value ? Number(f.lider_id.value) : null });
 
     async function salvar(btn, corpo, msg) {
       erro.hidden = true; btn.disabled = true;
       try { await api('/api/admin/pessoas/' + p.id, { metodo: 'PATCH', corpo }); toast(msg); OP = await api('/api/admin/opcoes'); carregarCadastros(); }
-      catch (e) { erro.textContent = e.message; erro.hidden = false; form.hidden = false; btn.disabled = false; }
+      catch (e) { erro.textContent = e.message; erro.hidden = false; btn.disabled = false; }
     }
     const botoes = [];
     const b = (txt, cls, fn) => { const el = h('button', { type: 'button', class: 'btn ' + cls, onclick: () => fn(el) }, txt); botoes.push(el); return el; };
     if (p.situacao === 'pendente') b('Aprovar', 'go', el => salvar(el, { ...valores(), situacao: 'ativo' }, 'Cadastro aprovado.'));
     if (p.situacao === 'bloqueado') b('Liberar acesso', 'go', el => salvar(el, { ...valores(), situacao: 'ativo' }, 'Acesso liberado.'));
-    if (p.situacao !== 'pendente') {
-      const editar = b('Editar', '', el => {
-        if (form.hidden) { form.hidden = false; el.textContent = 'Salvar'; return; }
-        salvar(el, valores(), 'Cadastro salvo.');
-      });
-      editar.dataset.acao = 'editar';
-    }
+    b('Salvar', '', el => salvar(el, valores(), 'Cadastro salvo.'));
     if (p.situacao !== 'bloqueado' && !eu) b('Bloquear', 'no', el => { if (confirm('Bloquear o acesso de ' + p.nome + '?')) salvar(el, { situacao: 'bloqueado' }, 'Acesso bloqueado.'); });
-
-    const meta = [p.cpf ? 'CPF ' + p.cpf : null, p.whatsapp ? 'WhatsApp ' + p.whatsapp : null, p.email || 'ainda não entrou com o Google',
-      p.equipe ? 'Equipe ' + p.equipe : null, p.nome_sga ? 'SGA: ' + p.nome_sga : null,
-      p.lider_nome ? 'Líder: ' + p.lider_nome : null, 'Cadastro: ' + p.criado_em_txt, p.vinculado_em_txt ? '1º acesso: ' + p.vinculado_em_txt : null].filter(Boolean);
-    const aguardando = p.aguardando_primeiro_acesso && p.situacao !== 'bloqueado';
-    return h('article', { class: 'pc ' + p.situacao, 'data-pessoa': p.id },
-      h('div', { class: 'pc-head' }, h('h3', {}, p.nome), h('span', { class: 'chip' }, p.tipo_nome),
-        aguardando ? h('span', { class: 'chip aguarda' }, 'Aguardando 1º acesso') : h('span', { class: chipCls }, chipTxt),
-        p.faltando.length ? h('span', { class: 'chip alert' }, 'Falta: ' + p.faltando.join(', ')) : null,
-        eu ? h('span', { class: 'chip' }, 'Você') : null),
-      h('div', { class: 'meta' }, ...meta.map(m => h('span', {}, m))),
-      form, erro, h('div', { class: 'pc-act' }, ...botoes));
+    return h('div', { class: 'pc ' + p.situacao, 'data-editor': p.id }, form, erro, h('div', { class: 'pc-act' }, ...botoes));
   }
 
   /* Acessos */

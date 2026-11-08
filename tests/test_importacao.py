@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db import Pessoa
 
-from .conftest import cpf_inventado, criar_pessoa, entrar, pre_cadastro
+from .conftest import ADMIN, cpf_inventado, criar_pessoa, entrar, pre_cadastro
 
 TITULOS = "Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\tWhatsApp"
 
@@ -22,7 +22,8 @@ def test_importa_lideres_e_liderados_colados_do_excel(admin, db):
         f"Financeiro Inventado\tFinanceiro\t{cpf_inventado(22)}\t\t\t\t",
     )
     r = admin.post("/api/admin/importar", json={"texto": texto}).json()
-    assert r == {"importado": True, "criados": 3, "atualizados": 0, "erros": []}
+    assert r == {"importado": True, "criados": 3, "atualizados": 0, "erros": [], "lideres_pela_equipe": 0,
+                 "ligado_ao_admin": False}
     pessoas = {p.nome: p for p in db.scalars(select(Pessoa).where(Pessoa.cpf.is_not(None)))}
     lider, esp = pessoas["Lider Inventado"], pessoas["Especialista Um Inventado"]
     assert (lider.tipo, lider.equipe, lider.whatsapp, lider.situacao) == ("lider", "Pé no Chão", "21987650000", "ativo")
@@ -66,7 +67,7 @@ def test_planilha_csv_com_ponto_e_virgula_e_colunas_minimas(admin, db):
 def test_modelo_da_planilha(admin):
     r = admin.get("/api/admin/modelo-planilha.csv")
     assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
-    assert r.text.lstrip("﻿").startswith("Nome;Tipo de conta;CPF;Equipe;Nome no SGA;Líder;WhatsApp")
+    assert r.text.lstrip("﻿").startswith("Nome;Tipo de conta;CPF;Equipe;Matrícula SGA;Nome no SGA;Líder;WhatsApp")
 
 
 def test_novo_cadastro_pelo_painel(admin, db):
@@ -75,7 +76,7 @@ def test_novo_cadastro_pelo_painel(admin, db):
     assert (p["cpf"], p["whatsapp"], p["equipe"]) == (
         "{}.{}.{}-{}".format(cpf_inventado(60)[:3], cpf_inventado(60)[3:6], cpf_inventado(60)[6:9], cpf_inventado(60)[9:]),
         "(11) 3456-7890", "Exodus Benefícios")
-    assert p["faltando"] == ["nome no SGA"]
+    assert p["faltando"] == ["nome ou matrícula no SGA"]
     r = admin.post("/api/admin/pessoas", json={"nome": "Outra Pessoa", "tipo": "cadastro", "cpf": cpf_inventado(60)})
     assert r.status_code == 400 and "Já existe um cadastro com esse CPF" in r.json()["erro"]
     r = admin.post("/api/admin/pessoas", json={"nome": "Outra Pessoa", "tipo": "cadastro", "cpf": "000"})
@@ -104,3 +105,47 @@ def test_editar_cpf_e_whatsapp(admin, db):
     assert "outro cadastro com esse CPF" in admin.patch(url, json={"cpf": cpf_inventado(91)}).json()["erro"]
     r = admin.patch(url, json={"whatsapp": "21 99999-0000"}).json()["pessoa"]
     assert r["whatsapp"] == "(21) 99999-0000"
+
+
+def test_planilha_no_formato_do_sistema_atual(admin, db):
+    """Mesmo formato da planilha de acessos de hoje (dados inventados): Usuário, TIPO DE CONTA, Nome, Equipe(s),
+    CPF, Matrícula SGA; tipos "liderado", "líder", "INSIDE SALES", "SENHA MASTER" e "SENHA FINANCEIRO"."""
+    titulos = "Usuário\tTIPO DE CONTA\tNome\tEquipe(s)\tCPF\tMatrícula SGA"
+    texto = planilha(
+        f"VENDEDORA UM\tINSIDE SALES\tVendedora Um Inventada\tEXODUS BENEFICIOS\t{cpf_inventado(101)}\t501",
+        f"ADMIN TESTE\tSENHA MASTER\tAdmin Teste Completo\tRECREIO\t{cpf_inventado(102)}\t502",
+        f"LIDER LUA\tlíder\tLider Lua Inventado\tLUA\t{cpf_inventado(103)}\t503",
+        f"LIDER ELITE\tlíder\tLider Elite Inventado\tELITE\t{cpf_inventado(104)}\t504",
+        f"LIDERADO LUA\tliderado\tLiderado Lua Inventado\tLUA\t{cpf_inventado(105)}\t505",
+        f"LIDERADO DOIS\tliderado\tLiderado Duas Equipes\tELITE, LUA\t{cpf_inventado(106)}\t506",
+        f"LIDERADO CASA\tliderado\tLiderado Sem Lider\tEXODUS BENEFICIOS, RECREIO, ÁGUIAS\t{cpf_inventado(107)}\t507",
+        f"FINANCEIRO\tSENHA FINANCEIRO\tFinanceiro Inventado\t\t{cpf_inventado(108)}\t508",
+        titulos=titulos)
+    r = admin.post("/api/admin/importar", json={"texto": texto}).json()
+    assert r["importado"] is True, r
+    assert (r["criados"], r["atualizados"], r["lideres_pela_equipe"], r["ligado_ao_admin"]) == (7, 1, 1, True)
+
+    por_nome = {p.nome: p for p in db.scalars(select(Pessoa))}
+    admin_p = por_nome["Admin Teste Completo"]  # a linha SENHA MASTER virou o próprio administrador
+    assert (admin_p.tipo, admin_p.email, admin_p.cpf, admin_p.equipe) == ("admin", ADMIN, cpf_inventado(102), "Recreio")
+    assert por_nome["Vendedora Um Inventada"].tipo == "vendedora_interna"
+    assert por_nome["Financeiro Inventado"].tipo == "financeiro"
+    lua, duas, casa = (por_nome[n] for n in ("Liderado Lua Inventado", "Liderado Duas Equipes", "Liderado Sem Lider"))
+    assert (lua.tipo, lua.matricula_sga, lua.lider_id) == ("especialista", "505", por_nome["Lider Lua Inventado"].id)
+    assert (duas.equipe, duas.lider_id) == ("Elite, Lua", None)  # dois líderes possíveis: fica para escolher
+    assert (casa.equipe, casa.lider_id) == ("Exodus Benefícios, Recreio, Águias", None)
+    assert len([p for p in por_nome.values() if p.tipo == "admin"]) == 1
+
+    # quem tem mais de uma equipe aparece no filtro de cada uma
+    nomes = lambda eq: {x["nome"] for x in admin.get("/api/admin/pessoas", params={"q": eq}).json()["pessoas"]}  # noqa: E731
+    assert "Liderado Duas Equipes" in nomes("elite") and "Liderado Duas Equipes" in nomes("lua")
+
+
+def test_equipes_e_matricula_no_painel(admin, db):
+    p = pre_cadastro(admin, nome="Especialista Inventado", cpf=cpf_inventado(110), equipe="lua, Elite",
+                     matricula_sga="777")
+    assert (p["equipe"], p["equipes"], p["matricula_sga"]) == ("Lua, Elite", ["Lua", "Elite"], "777")
+    assert p["faltando"] == ["líder"]  # a matrícula vale no lugar do nome no SGA
+    r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"equipe": "Águias, Águias", "matricula_sga": ""})
+    assert r.json()["pessoa"]["equipe"] == "Águias" and r.json()["pessoa"]["matricula_sga"] is None
+    assert "desconhecida" in admin.patch(f"/api/admin/pessoas/{p['id']}", json={"equipe": "Lua, Marte"}).json()["erro"]
