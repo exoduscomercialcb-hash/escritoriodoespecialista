@@ -1,7 +1,7 @@
 # Plano das etapas 2 e 3: dados no servidor e os cards de hoje
 
-Situação em 08/11/2026: etapa 1 no ar (PR #1). Etapa 2, parte 1 (trava do SGA, registro das buscas, teste de conexão)
-no PR #2, esperando a aprovação do Rafael. Este documento é o plano do que vem depois e a ordem de entrega.
+Situação em 08/11/2026: etapa 1 no ar (PR #1). Etapa 2, parte 1 no PR #2 e partes 2.2, 3.1 e 3.2 no PR #3, esperando
+a aprovação do Rafael. Este documento é o plano e a ordem de entrega.
 
 ## Decisão de arquitetura: reaproveitar o que já funciona
 
@@ -29,9 +29,9 @@ Reescrever do zero arrisca mudar uma regra sem querer.
 | Parte | O quê | Depende de | Situação |
 |---|---|---|---|
 | 2.1 | Trava do SGA, registro das buscas, teste de conexão | — | PR #2 |
-| 2.2 | Importar os dados do sistema atual (pacotes, lista do remarketing, marcações) e guardar no banco | Exportação feita pelo Claude que tem o Kit (abaixo) | a fazer |
-| 3.1 | `/api/dados`: o pacote da pessoa logada (coordenação/financeiro/cadastro: geral; líder: a equipe; especialista e vendedora: o dele) | 2.2 | a fazer |
-| 3.2 | A página atual com os 6 cards, lendo `/api/dados` | 3.1 | a fazer |
+| 2.2 | Importar os dados do sistema atual (pacotes, lista do remarketing, marcações) e guardar no banco | Exportação feita pelo Claude que tem o Kit (abaixo) | pronta (PR #3); falta o arquivo |
+| 3.1 | `/api/dados`: o pacote da pessoa logada (coordenação/financeiro/cadastro: geral; líder: a equipe; especialista e vendedora: o dele) | 2.2 | pronta (PR #3) |
+| 3.2 | A página atual com os 6 cards, lendo `/api/dados` e gravando as marcações em `/api/banco` | 3.1 | pronta (PR #3); conferir com os dados reais. Envio de comprovantes e prints fica para a etapa 4 |
 | 2.3 | A busca automática (o script adaptado) regenerando os pacotes; 1 vez por dia, de madrugada, enquanto o sistema atual estiver no ar | 2.1 aprovada e testada no Render; 2.2 (estado anterior) | a fazer |
 | 2.4 | Botão "Atualizar meus dados" (busca pequena por pessoa, fila, 15 minutos) | 2.3 | a fazer |
 
@@ -59,8 +59,8 @@ Cole o texto abaixo na conversa do Claude que cuida do Escritório atual (a que 
 > - `especialistas`: para cada item do `spec_keys.json`: `nome`, `sga` (lista de nomes no SGA), `eqs`, `carteira`,
 >   `ld` (se tiver) e `rows` (a lista do remarketing dele, descriptografada do `vault`). Sem as chaves (`k`) e sem senhas.
 > - `motivos` e `rtcfg`: os blocos da página, descriptografados se forem criptografados.
-> - `banco`: o conteúdo atual das coleções do banco da página: `comp` (todos os documentos, inclusive `regras`),
->   `compconf`, `reativ` e `cancenv`.
+> - `banco`: o conteúdo atual das coleções do banco da página, no formato `{coleção: {id do documento: dados}}`:
+>   `enviados`, `comp` (todos os documentos, inclusive `regras`), `compconf`, `reativ` e `cancenv`.
 > Confira no fim: quantos especialistas, quantas linhas no remarketing e quais meses em `evo.all.meses_base`.
 
 O arquivo tem dados pessoais de associados: entra no sistema novo pelo painel (Importar dados do sistema atual, parte

@@ -10,6 +10,7 @@ from .atualizacoes import painel as painel_de_atualizacoes
 from .atualizacoes import testar_powercrm, testar_sga
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
+from .dados import importar_sistema_atual, resumo_da_importacao
 from .db import Pessoa
 from .dependencias import banco, config, exige_json, exige_painel
 from .servicos import (atualizar_pessoa, data_do_filtro, excluir_pessoa, lideres, limpar_espacos, pessoa_para_json,
@@ -111,6 +112,24 @@ def excluir(pessoa_id: int, request: Request, db: Session = Depends(banco), quem
         raise HTTPException(404, "Cadastro não encontrado.")
     excluir_pessoa(db, alvo, db.get(Pessoa, quem.id), config(request))
     return {"ok": True}
+
+
+@rotas_admin.get("/importacao")
+def ver_importacao(db: Session = Depends(banco)):
+    return resumo_da_importacao(db)
+
+
+@rotas_admin.post("/importar-sistema-atual", dependencies=[Depends(exige_json)])
+async def importar_do_sistema_atual(request: Request, db: Session = Depends(banco),
+                                    quem: Pessoa = Depends(exige_painel)):
+    """Recebe o arquivo exportacao_escritorio.json (gerado pelo Claude que tem o Kit) e guarda no banco."""
+    if quem.tipo != "admin":
+        raise HTTPException(403, "Só o administrador importa os dados do sistema atual.")
+    try:
+        exp = await request.json()
+    except ValueError:
+        raise HTTPException(400, "O arquivo não é um JSON válido.") from None
+    return importar_sistema_atual(db, exp)
 
 
 @rotas_admin.get("/atualizacoes")

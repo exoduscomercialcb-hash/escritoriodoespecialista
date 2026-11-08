@@ -143,7 +143,6 @@ a.btn { justify-content: center; }
 .upd-txt p { margin: 0; font-size: 13.5px; color: rgba(255,255,255,.88); max-width: 640px; }
 .upd-txt small { display: block; margin-top: 3px; font-size: 12px; color: rgba(255,255,255,.62); }
 
-#homeVazio { position: relative; z-index: 1; margin: -48px 0 48px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 28px 22px; }
 
 /* Painel do administrador */
 #adminView { padding: 22px 0 48px; }
@@ -177,7 +176,7 @@ a.btn { justify-content: center; }
 .vtab .lnk input { flex: 1; min-width: 0; font-size: 13px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .vtab .btn { padding: 7px 11px; font-size: 13px; }
 .abas { display: flex; flex-wrap: wrap; gap: 4px; }
-@media (max-width: 620px) { .cover-upd { margin-top: 14px; } #homeVazio { margin-top: -40px; } }
+@media (max-width: 620px) { .cover-upd { margin-top: 14px; } }
 
 /* Cadastros: novo cadastro e importação da planilha */
 .adm-box { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }

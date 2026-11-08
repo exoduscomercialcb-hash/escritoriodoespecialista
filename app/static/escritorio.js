@@ -100,19 +100,16 @@
 
   /* ------------------------------------------------------------ app */
   let EU = null;
-  const HOME_ARROW = '<path d="M5 12h14M13 6l6 6-6 6"/>';
-  const CARDS = {
-    adm: { t: 'Painel do administrador', d: 'Cadastros, links de cadastro e acessos: quem entrou, quando e quantas vezes.', cls: 'g-adm',
-      ic: '<path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6l8-3Z"/><path d="M9 12l2 2 4-4"/>' },
-  };
+
 
   function telaApp(eu) {
     EU = eu; $('login').hidden = true; $('app').hidden = false;
     const p = eu.pessoa;
     $('hName').textContent = p.nome;
     $('hWho').textContent = [p.tipo_nome, p.equipe ? 'Equipe ' + p.equipe : null].filter(Boolean).join(' · ');
+    if (location.hash !== '#painel' || !eu.painel) { location.replace('/escritorio'); return; }
     carregarAtualizar();
-    if (location.hash === '#painel' && eu.painel) abrirPainel(); else irMenu();
+    abrirPainel();
   }
 
   async function carregarAtualizar() {
@@ -124,27 +121,7 @@
     } catch (e) { $('upd').hidden = true; }
   }
 
-  async function irMenu() {
-    $('app').classList.add('mhome'); $('adminView').hidden = true; $('btnHome').hidden = true;
-    $('coverEyebrow').textContent = 'Menu principal'; $('coverTitle').textContent = 'Escritório do Especialista';
-    if (location.hash) history.replaceState(null, '', location.pathname);
-    const cards = EU.painel ? ['adm'] : [];
-    $('home').hidden = !cards.length; $('homeVazio').hidden = !!cards.length;
-    $('home').replaceChildren(...cards.map((k, i) => {
-      const c = CARDS[k];
-      return h('button', { type: 'button', class: 'pcard ' + c.cls, 'data-go': k, onclick: () => abrirPainel() },
-        h('span', { class: 'pv' }, h('span', { class: 'pn' }, String(i + 1).padStart(2, '0')), svg(c.ic, 'pbig')),
-        h('span', { class: 'pb' }, h('span', { class: 'pic' }, svg(c.ic)), h('h3', {}, c.t), h('p', {}, c.d)),
-        h('span', { class: 'pf' }, h('span', { class: 'pfs', id: 'pfs-' + k }, 'Abrir'), h('span', { class: 'pgo' }, 'Abrir', svg(HOME_ARROW))));
-    }));
-    registrar('menu'); window.scrollTo(0, 0);
-    if (EU.painel) {
-      try { const r = await api('/api/admin/pessoas?situacao=aguardando'); const n = r.pessoas.length;
-        $('pfs-adm').textContent = n ? n + (n === 1 ? ' pessoa aguardando 1º acesso' : ' pessoas aguardando 1º acesso') : 'Todos os cadastrados já entraram';
-      } catch (e) { /* o card continua com "Abrir" */ }
-    }
-  }
-  $('btnHome').addEventListener('click', irMenu);
+  $('btnHome').addEventListener('click', () => { location.href = '/escritorio'; });
 
   /* ------------------------------------------------------------ painel do administrador */
   let OP = null; // opções: tipos, equipes, líderes
@@ -152,7 +129,7 @@
   const SIT_CHIP = { pendente: ['chip pend', 'Pendente'], ativo: ['chip ok', 'Ativo'], bloqueado: ['chip bloq', 'Bloqueado'] };
 
   async function abrirPainel(parte) {
-    $('app').classList.remove('mhome'); $('home').hidden = true; $('homeVazio').hidden = true; $('adminView').hidden = false; $('btnHome').hidden = false;
+    $('app').classList.remove('mhome'); $('adminView').hidden = false; $('btnHome').hidden = false;
     $('coverEyebrow').textContent = 'Painel do administrador'; $('coverTitle').textContent = 'Cadastros e acessos';
     if (location.hash !== '#painel') history.replaceState(null, '', '#painel');
     window.scrollTo(0, 0);
@@ -165,7 +142,7 @@
     $('admCad').hidden = parte !== 'cad'; $('admAcs').hidden = parte !== 'acs'; $('admAtu').hidden = parte !== 'atu';
     if (parte === 'cad') { registrar('admin_cadastros'); carregarCadastros(); }
     if (parte === 'acs') { registrar('admin_acessos'); prepararAcessos(); }
-    if (parte === 'atu') { registrar('admin_atualizacoes'); carregarAtualizacoes(); }
+    if (parte === 'atu') { registrar('admin_atualizacoes'); carregarAtualizacoes(); carregarImportacao(); }
   }
   document.querySelectorAll('[data-adm]').forEach(b => b.addEventListener('click', () => mostrarParte(b.dataset.adm)));
 
@@ -339,6 +316,29 @@
         h('td', {}, a.tipo), h('td', {}, a.ok === null ? h('span', { class: 'chip aguarda' }, 'rodando') : h('span', { class: a.ok ? 'chip ok' : 'chip bloq' }, a.ok ? 'ok' : 'erro')),
         h('td', {}, a.mensagem || '')))
         : [h('tr', {}, h('td', { colspan: 6, class: 'empty' }, 'Nenhuma busca registrada ainda.'))])));
+  }
+
+  // Importação dos dados do sistema atual (arquivo do Claude que tem o Kit)
+  function resumoImportacao(r) {
+    if (!r.importado) return [h('p', { class: 'hint' }, 'Ainda não houve importação.')];
+    return [h('p', { class: 'ok-msg' }, 'Importado em ' + r.importado_em_txt + ': meses ' + r.meses.join(' a ') + ', ' + r.especialistas + ' especialistas, ' + r.linhas_remarketing + ' linhas no remarketing, equipes ' + r.equipes.join(', ') + '.'),
+      ...(r.sem_ligacao.length ? [h('p', { class: 'err' }, 'Sem dados ligados (o nome do cadastro não bate com o nome no SGA): ' + r.sem_ligacao.map(x => x.nome).join(', ') + '.')] : [])];
+  }
+  let ARQ_ATUAL = null;
+  $('impAtualArquivo').addEventListener('change', ev => {
+    ARQ_ATUAL = ev.target.files[0] || null; ev.target.value = '';
+    $('impAtualNome').textContent = ARQ_ATUAL ? ARQ_ATUAL.name : ''; $('impAtualEnviar').disabled = !ARQ_ATUAL;
+  });
+  $('impAtualEnviar').addEventListener('click', async () => {
+    const res = $('impAtualResultado'); $('impAtualEnviar').disabled = true; res.replaceChildren(h('p', { class: 'hint' }, 'Importando…'));
+    try {
+      let corpo; try { corpo = JSON.parse(await ARQ_ATUAL.text()); } catch (e) { throw new Error('O arquivo não é um JSON válido.'); }
+      res.replaceChildren(...resumoImportacao(await api('/api/admin/importar-sistema-atual', { corpo })));
+    } catch (e) { res.replaceChildren(h('p', { class: 'err' }, e.message)); }
+    $('impAtualEnviar').disabled = !ARQ_ATUAL;
+  });
+  async function carregarImportacao() {
+    try { $('impAtualSituacao').replaceChildren(...resumoImportacao(await api('/api/admin/importacao'))); } catch (e) { /* sem painel */ }
   }
 
   $('atuTestar').addEventListener('click', async () => {
