@@ -48,6 +48,20 @@
     email: 'Sua conta Google não tem o e-mail confirmado. Use outra conta.',
   };
 
+  // Primeiro acesso: CPF (acha o cadastro feito pela coordenação) e WhatsApp (contato). Depois, o Google.
+  function formPrimeiroAcesso(jaEntrou) {
+    const cpf = h('input', { class: 'field', id: 'paCpf', name: 'cpf', inputmode: 'numeric', autocomplete: 'off', required: true, maxlength: 14, placeholder: '000.000.000-00' });
+    const whats = h('input', { class: 'field', id: 'paWhats', name: 'whatsapp', type: 'tel', inputmode: 'tel', autocomplete: 'tel', required: true, maxlength: 20, placeholder: '(21) 98765-4321' });
+    const erro = h('p', { class: 'err', id: 'paErro', hidden: true });
+    const enviar = jaEntrou ? h('button', { class: 'primary', type: 'submit', id: 'paEnviar' }, 'Liberar meu acesso')
+      : h('button', { class: 'btn sec gbtn', type: 'submit', id: 'paEnviar' }, svg(G_ICON), 'Continuar com Google');
+    return h('form', { class: 'pa', id: 'paForm', onsubmit: async ev => {
+      ev.preventDefault(); erro.hidden = true; enviar.disabled = true;
+      try { const r = await api('/api/primeiro-acesso', { corpo: { cpf: cpf.value, whatsapp: whats.value } }); location.assign(r.proximo); }
+      catch (e) { erro.textContent = e.message; erro.hidden = false; enviar.disabled = false; }
+    } }, h('label', { for: 'paCpf' }, 'CPF', cpf), h('label', { for: 'paWhats' }, 'WhatsApp (com DDD)', whats), erro, enviar);
+  }
+
   function telaAnonimo(eu) {
     const erro = ERROS_URL[new URLSearchParams(location.search).get('erro')];
     telaLogin(
@@ -55,57 +69,26 @@
       erro ? h('p', { class: 'err' }, erro) : null,
       eu.google_configurado === false ? h('p', { class: 'err' }, 'O login com Google ainda não foi configurado no servidor.') : null,
       botaoGoogle('/auth/login'),
-      h('p', { class: 'hint' }, 'Use a sua conta Google. Primeiro acesso? Peça à coordenação o link de cadastro do seu tipo de acesso.'));
+      h('p', { class: 'hint' }, 'Já fez o primeiro acesso? É só entrar com a sua conta Google.'),
+      h('div', { class: 'sep' }, h('span', {}, 'Primeiro acesso')),
+      h('p', { class: 'hint' }, 'Informe o seu CPF e o seu WhatsApp e continue com a sua conta Google. Ela passa a ser o seu acesso ao escritório.'),
+      formPrimeiroAcesso(false));
   }
 
-  function telaNaoLiberado(eu, extra, sair) {
+  function telaSemCadastro(eu) {
+    telaLogin(
+      h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email)),
+      h('p', { class: 'hint', id: 'semCadastro' }, 'É o seu primeiro acesso. Informe o seu CPF e o seu WhatsApp para liberar o escritório nesta conta Google.'),
+      formPrimeiroAcesso(true),
+      h('a', { class: 'btn sec', id: 'outraConta', href: '/auth/sair' }, 'Entrar com outra conta'));
+  }
+
+  function telaNaoLiberado(eu, extra) {
     telaLogin(
       extra ? h('p', { class: 'ok-msg' }, extra) : null,
       h('p', { class: 'err', id: 'naoLiberado' }, eu.mensagem || 'Seu acesso ainda não foi liberado. Fale com a coordenação.'),
       eu.email ? h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email)) : null,
-      h('a', { class: 'btn sec', id: 'outraConta', href: sair || '/auth/sair' }, 'Entrar com outra conta'));
-  }
-
-  async function telaCadastro(codigo, eu) {
-    let link;
-    try { link = await api('/api/cadastro/' + encodeURIComponent(codigo)); } catch (e) { link = { valido: false, mensagem: e.message }; }
-    if (!link.valido) return telaLogin(h('p', { class: 'err' }, link.mensagem), h('a', { class: 'btn sec', href: '/' }, 'Ir para o início'));
-    $('loginSub').textContent = 'Cadastro de acesso: ' + link.tipo_nome + '.';
-    // Sair mantendo o link: depois de sair, a pessoa volta para este cadastro (e não para o login comum).
-    const sairComLink = '/auth/sair?link=' + encodeURIComponent(codigo);
-    if (eu.estado === 'ativo') {
-      return telaLogin(
-        h('p', { class: 'hint', id: 'jaConectado' }, 'Você já está conectado como ', h('b', {}, eu.pessoa.nome),
-          eu.pessoa.email ? ' (' + eu.pessoa.email + ')' : '', '. Este link é para cadastrar outra conta Google.'),
-        h('a', { class: 'primary', id: 'sairCadastrar', href: sairComLink }, 'Sair e cadastrar outra conta'),
-        h('a', { class: 'btn sec', href: '/' }, 'Continuar como ' + eu.pessoa.nome));
-    }
-    if (eu.estado === 'pendente' || eu.estado === 'bloqueado') return telaNaoLiberado(eu, null, sairComLink);
-    if (eu.estado !== 'sem_cadastro') {
-      // Quem abre o link sem estar logado vai direto para o login do Google.
-      const destino = '/auth/login?link=' + encodeURIComponent(codigo);
-      if (eu.google_configurado !== false) location.replace(destino);
-      return telaLogin(
-        h('p', { class: 'hint' }, eu.google_configurado !== false ? 'Abrindo o login do Google…' :
-          'Entre com a sua conta Google. Depois, escreva o seu nome completo. A coordenação aprova o cadastro e libera o acesso.'),
-        botaoGoogle(destino));
-    }
-    const nome = h('input', { class: 'field', id: 'cadNome', name: 'nome', autocomplete: 'name', required: true, minlength: 3, maxlength: 120, value: eu.nome || '' });
-    const erro = h('p', { class: 'err', hidden: true });
-    const enviar = h('button', { class: 'primary', type: 'submit', id: 'cadEnviar' }, 'Enviar cadastro');
-    const form = h('form', { class: 'login-body', id: 'cadForm', onsubmit: async ev => {
-      ev.preventDefault(); erro.hidden = true; enviar.disabled = true;
-      try {
-        const r = await api('/api/cadastro/' + encodeURIComponent(codigo), { corpo: { nome: nome.value } });
-        history.replaceState(null, '', '/');
-        telaNaoLiberado({ mensagem: r.mensagem, email: eu.email }, 'Cadastro enviado. Assim que a coordenação aprovar, é só entrar com o Google.');
-      } catch (e) { erro.textContent = e.message; erro.hidden = false; enviar.disabled = false; }
-    } },
-      h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email), ' · ', h('a', { href: sairComLink }, 'usar outra conta')),
-      h('label', { for: 'cadNome' }, 'Nome completo', nome),
-      erro, enviar);
-    $('app').hidden = true; $('login').hidden = false;
-    $('loginBody').replaceWith(Object.assign(form, { id: 'loginBody' }));
+      h('a', { class: 'btn sec', id: 'outraConta', href: '/auth/sair' }, 'Entrar com outra conta'));
   }
 
   /* ------------------------------------------------------------ app */
@@ -149,8 +132,8 @@
     }));
     registrar('menu'); window.scrollTo(0, 0);
     if (EU.painel) {
-      try { const r = await api('/api/admin/pessoas?situacao=pendente'); const n = r.pessoas.length;
-        $('pfs-adm').textContent = n ? n + (n === 1 ? ' cadastro pendente' : ' cadastros pendentes') : 'Nenhum cadastro pendente';
+      try { const r = await api('/api/admin/pessoas?situacao=aguardando'); const n = r.pessoas.length;
+        $('pfs-adm').textContent = n ? n + (n === 1 ? ' pessoa aguardando 1º acesso' : ' pessoas aguardando 1º acesso') : 'Todos os cadastrados já entraram';
       } catch (e) { /* o card continua com "Abrir" */ }
     }
   }
@@ -172,9 +155,8 @@
 
   function mostrarParte(parte) {
     document.querySelectorAll('[data-adm]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.adm === parte)));
-    $('admCad').hidden = parte !== 'cad'; $('admLnk').hidden = parte !== 'lnk'; $('admAcs').hidden = parte !== 'acs';
+    $('admCad').hidden = parte !== 'cad'; $('admAcs').hidden = parte !== 'acs';
     if (parte === 'cad') { registrar('admin_cadastros'); carregarCadastros(); }
-    if (parte === 'lnk') { registrar('admin_links'); carregarLinks(); }
     if (parte === 'acs') { registrar('admin_acessos'); prepararAcessos(); }
   }
   document.querySelectorAll('[data-adm]').forEach(b => b.addEventListener('click', () => mostrarParte(b.dataset.adm)));
@@ -183,7 +165,7 @@
     ...lista.map(o => h('option', { value: o.id, selected: String(o.id) === String(atual ?? '') }, o.nome))];
 
   /* Cadastros */
-  let filtroSit = 'pendente', buscaT;
+  let filtroSit = '', buscaT;
   document.querySelectorAll('#cadFiltro [data-sit]').forEach(b => b.addEventListener('click', () => {
     filtroSit = b.dataset.sit;
     document.querySelectorAll('#cadFiltro [data-sit]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
@@ -197,7 +179,53 @@
     try { r = await api('/api/admin/pessoas?' + q); } catch (e) { toast(e.message); return; }
     $('cadLista').replaceChildren(...(r.pessoas.length ? r.pessoas.map(cartaoPessoa)
       : [h('p', { class: 'empty' }, filtroSit === 'pendente' ? 'Nenhum cadastro pendente.' : 'Nenhum cadastro encontrado.')]));
+    prepararNovo();
   }
+
+  function prepararNovo() {
+    if ($('novoTipo').options.length) {  // só atualiza a lista de líderes
+      $('novoLider').replaceChildren(...opcoesSelect(OP.lideres.map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), $('novoLider').value, 'Sem líder'));
+      return;
+    }
+    $('novoTipo').replaceChildren(...opcoesSelect(OP.tipos.filter(t => t.id !== 'admin' || EU.pessoa.tipo === 'admin'), 'especialista'));
+    $('novoEquipe').replaceChildren(...opcoesSelect(OP.equipes.map(e => ({ id: e, nome: e })), '', 'Sem equipe'));
+    $('novoLider').replaceChildren(...opcoesSelect(OP.lideres.map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), '', 'Sem líder'));
+    const ajusta = () => { $('novoLiderCampo').hidden = $('novoTipo').value !== 'especialista'; };
+    $('novoTipo').addEventListener('change', ajusta); ajusta();
+  }
+
+  $('novoForm').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('novoErro').hidden = true;
+    const corpo = { nome: $('novoNome').value, tipo: $('novoTipo').value, cpf: $('novoCpf').value, equipe: $('novoEquipe').value || null,
+      nome_sga: $('novoSga').value || null, whatsapp: $('novoWhats').value || null,
+      lider_id: $('novoTipo').value === 'especialista' && $('novoLider').value ? Number($('novoLider').value) : null };
+    try {
+      await api('/api/admin/pessoas', { corpo });
+      toast('Cadastro feito. No primeiro acesso, a pessoa informa o CPF e entra com o Google.');
+      for (const id of ['novoNome', 'novoCpf', 'novoSga', 'novoWhats']) $(id).value = '';
+      OP = await api('/api/admin/opcoes'); carregarCadastros();
+    } catch (e) { $('novoErro').textContent = e.message; $('novoErro').hidden = false; }
+  });
+
+  $('impArquivo').addEventListener('change', async ev => {
+    const arq = ev.target.files[0]; if (!arq) return;
+    $('impTexto').value = await arq.text(); ev.target.value = '';
+  });
+
+  $('impEnviar').addEventListener('click', async () => {
+    const res = $('impResultado'); res.replaceChildren(); $('impEnviar').disabled = true;
+    try {
+      const r = await api('/api/admin/importar', { corpo: { texto: $('impTexto').value } });
+      if (r.importado) {
+        res.replaceChildren(h('p', { class: 'ok-msg' }, 'Planilha importada: ' + r.criados + ' cadastro(s) novo(s) e ' + r.atualizados + ' atualizado(s).'));
+        $('impTexto').value = ''; OP = await api('/api/admin/opcoes'); carregarCadastros();
+      } else {
+        res.replaceChildren(h('p', { class: 'err' }, 'Nada foi gravado. Corrija estas linhas da planilha e importe de novo:'),
+          h('ul', { class: 'imp-res' }, ...r.erros.map(e => h('li', {}, 'Linha ' + e.linha + ': ' + e.mensagem))));
+      }
+    } catch (e) { res.replaceChildren(h('p', { class: 'err' }, e.message)); }
+    $('impEnviar').disabled = false;
+  });
 
   function cartaoPessoa(p) {
     const eu = p.id === EU.pessoa.id;
@@ -208,15 +236,19 @@
       equipe: h('select', { class: 'field' }, ...opcoesSelect(OP.equipes.map(e => ({ id: e, nome: e })), p.equipe, 'Sem equipe')),
       nome_sga: h('input', { class: 'field', value: p.nome_sga || '', maxlength: 160, placeholder: 'EX.: JOAO DA SILVA' }),
       lider_id: h('select', { class: 'field' }, ...opcoesSelect(OP.lideres.filter(l => l.id !== p.id).map(l => ({ id: l.id, nome: l.nome + (l.equipe ? ' (' + l.equipe + ')' : '') })), p.lider_id, 'Sem líder')),
+      cpf: h('input', { class: 'field', value: p.cpf || '', inputmode: 'numeric', maxlength: 14 }),
+      whatsapp: h('input', { class: 'field', value: p.whatsapp || '', type: 'tel', maxlength: 20 }),
     };
     const campoLider = h('label', {}, 'Líder', f.lider_id);
     const ajustaLider = () => { campoLider.hidden = f.tipo.value !== 'especialista'; };
     f.tipo.addEventListener('change', ajustaLider); ajustaLider();
     const form = h('div', { class: 'pc-form', hidden: p.situacao !== 'pendente' },
       h('label', {}, 'Nome', f.nome), h('label', {}, 'Tipo de acesso', f.tipo), h('label', {}, 'Equipe', f.equipe),
-      h('label', {}, 'Nome no SGA ', h('small', {}, '(exatamente como está no SGA)'), f.nome_sga), campoLider);
+      h('label', {}, 'Nome no SGA ', h('small', {}, '(exatamente como está no SGA)'), f.nome_sga), campoLider,
+      h('label', {}, 'CPF', f.cpf), h('label', {}, 'WhatsApp', f.whatsapp));
     const erro = h('p', { class: 'err', hidden: true });
     const valores = () => ({ nome: f.nome.value, tipo: f.tipo.value, equipe: f.equipe.value || null, nome_sga: f.nome_sga.value || null,
+      cpf: f.cpf.value || null, whatsapp: f.whatsapp.value || null,
       lider_id: f.tipo.value === 'especialista' && f.lider_id.value ? Number(f.lider_id.value) : null });
 
     async function salvar(btn, corpo, msg) {
@@ -237,51 +269,18 @@
     }
     if (p.situacao !== 'bloqueado' && !eu) b('Bloquear', 'no', el => { if (confirm('Bloquear o acesso de ' + p.nome + '?')) salvar(el, { situacao: 'bloqueado' }, 'Acesso bloqueado.'); });
 
-    const meta = [p.email || 'sem e-mail Google', p.equipe ? 'Equipe ' + p.equipe : null, p.nome_sga ? 'SGA: ' + p.nome_sga : null,
-      p.lider_nome ? 'Líder: ' + p.lider_nome : null, 'Cadastro: ' + p.criado_em_txt, p.aprovado_em_txt ? 'Aprovado: ' + p.aprovado_em_txt : null].filter(Boolean);
+    const meta = [p.cpf ? 'CPF ' + p.cpf : null, p.whatsapp ? 'WhatsApp ' + p.whatsapp : null, p.email || 'ainda não entrou com o Google',
+      p.equipe ? 'Equipe ' + p.equipe : null, p.nome_sga ? 'SGA: ' + p.nome_sga : null,
+      p.lider_nome ? 'Líder: ' + p.lider_nome : null, 'Cadastro: ' + p.criado_em_txt, p.vinculado_em_txt ? '1º acesso: ' + p.vinculado_em_txt : null].filter(Boolean);
+    const aguardando = p.aguardando_primeiro_acesso && p.situacao !== 'bloqueado';
     return h('article', { class: 'pc ' + p.situacao, 'data-pessoa': p.id },
-      h('div', { class: 'pc-head' }, h('h3', {}, p.nome), h('span', { class: 'chip' }, p.tipo_nome), h('span', { class: chipCls }, chipTxt), eu ? h('span', { class: 'chip' }, 'Você') : null),
+      h('div', { class: 'pc-head' }, h('h3', {}, p.nome), h('span', { class: 'chip' }, p.tipo_nome),
+        aguardando ? h('span', { class: 'chip aguarda' }, 'Aguardando 1º acesso') : h('span', { class: chipCls }, chipTxt),
+        p.faltando.length ? h('span', { class: 'chip alert' }, 'Falta: ' + p.faltando.join(', ')) : null,
+        eu ? h('span', { class: 'chip' }, 'Você') : null),
       h('div', { class: 'meta' }, ...meta.map(m => h('span', {}, m))),
       form, erro, h('div', { class: 'pc-act' }, ...botoes));
   }
-
-  /* Links de cadastro */
-  async function carregarLinks() {
-    const sel = $('lnkTipo');
-    if (!sel.options.length) sel.replaceChildren(...opcoesSelect(OP.tipos.filter(t => t.id !== 'admin' || EU.pessoa.tipo === 'admin'), 'especialista'));
-    let r;
-    try { r = await api('/api/admin/links'); } catch (e) { toast(e.message); return; }
-    const SIT = { ativo: ['chip ok', 'Ativo'], vencido: ['chip alert', 'Vencido'], desativado: ['chip', 'Desativado'] };
-    $('lnkTabela').replaceChildren(
-      h('thead', {}, h('tr', {}, ...['Tipo', 'Link', 'Situação', 'Pessoas cadastradas', 'Válido até', 'Criado em', ''].map(t => h('th', {}, t)))),
-      h('tbody', {}, ...(r.links.length ? r.links.map(l => {
-        const campo = h('input', { readonly: true, value: l.url, 'aria-label': 'Link de cadastro', onfocus: e => e.target.select() });
-        const [cc, ct] = SIT[l.situacao];
-        return h('tr', { 'data-link': l.id, 'data-codigo': l.codigo },
-          h('td', { class: 'nw' }, l.tipo_nome),
-          h('td', {}, h('div', { class: 'lnk' }, campo, h('button', { type: 'button', class: 'btn', onclick: () => copiar(campo) }, 'Copiar'))),
-          h('td', {}, h('span', { class: cc }, ct)),
-          h('td', { class: 'r' }, l.usos),
-          h('td', { class: 'nw' }, l.validade_txt || 'Sem validade'),
-          h('td', { class: 'nw' }, l.criado_em_txt),
-          h('td', {}, h('button', { type: 'button', class: 'btn' + (l.ativo ? ' no' : ''), onclick: async () => {
-            try { await api('/api/admin/links/' + l.id, { metodo: 'PATCH', corpo: { ativo: !l.ativo } }); toast(l.ativo ? 'Link desativado.' : 'Link reativado.'); carregarLinks(); }
-            catch (e) { toast(e.message); } } }, l.ativo ? 'Desativar' : 'Reativar')));
-      }) : [h('tr', {}, h('td', { colspan: 7, class: 'empty' }, 'Nenhum link gerado ainda.'))])));
-  }
-
-  async function copiar(campo) {
-    try { await navigator.clipboard.writeText(campo.value); }
-    catch (e) { campo.select(); document.execCommand('copy'); }
-    toast('Link copiado.');
-  }
-
-  $('lnkForm').addEventListener('submit', async ev => {
-    ev.preventDefault();
-    try { await api('/api/admin/links', { corpo: { tipo: $('lnkTipo').value, validade: $('lnkValidade').value || null } });
-      toast('Link gerado.'); $('lnkValidade').value = ''; carregarLinks(); }
-    catch (e) { toast(e.message); }
-  });
 
   /* Acessos */
   async function prepararAcessos() {
@@ -320,10 +319,9 @@
   async function iniciar() {
     let eu;
     try { eu = await api('/api/eu'); } catch (e) { return telaLogin(h('p', { class: 'err' }, 'Não foi possível falar com o servidor. Aperte F5 para tentar de novo.')); }
-    const m = location.pathname.match(/^\/cadastro\/([^/]+)$/);
-    if (m) return telaCadastro(decodeURIComponent(m[1]), eu);
     if (eu.estado === 'ativo') return telaApp(eu);
     if (eu.estado === 'anonimo') return telaAnonimo(eu);
+    if (eu.estado === 'sem_cadastro') return telaSemCadastro(eu);
     return telaNaoLiberado(eu);
   }
   iniciar();

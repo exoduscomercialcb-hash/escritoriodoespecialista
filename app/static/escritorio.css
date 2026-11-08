@@ -125,10 +125,10 @@ body { overflow-x: hidden; }
 .g-adm { --g: linear-gradient(135deg,#1a1240 0%,#33228a 55%,#5b4bd6 100%); }
 div.login-body { padding: 22px 24px 24px; display: grid; gap: 14px; }
 a.primary { display: block; text-align: center; text-decoration: none; }
-a.primary.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.primary.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; }
 a.home-back { text-decoration: none; }
 a.btn { justify-content: center; }
-a.primary.gbtn svg { width: 20px; height: 20px; flex: none; background: #fff; border-radius: 50%; padding: 2px; }
+.primary.gbtn svg { width: 20px; height: 20px; flex: none; background: #fff; border-radius: 50%; padding: 2px; }
 .ok-msg { font-size: 14px; color: var(--gain); background: var(--gain-bg); border-radius: 8px; padding: 9px 11px; margin: 0; }
 .login-body .quem { font-size: 14px; margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .login-body .quem b { color: var(--fg); }
@@ -178,3 +178,18 @@ a.primary.gbtn svg { width: 20px; height: 20px; flex: none; background: #fff; bo
 .vtab .btn { padding: 7px 11px; font-size: 13px; }
 .abas { display: flex; flex-wrap: wrap; gap: 4px; }
 @media (max-width: 620px) { .cover-upd { margin-top: 14px; } #homeVazio { margin-top: -40px; } }
+
+/* Cadastros: novo cadastro e importação da planilha */
+.adm-box { margin-top: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.adm-box > summary { cursor: pointer; padding: 12px 16px; font-weight: 700; color: var(--accent); }
+.adm-box[open] > summary { border-bottom: 1px solid var(--line); }
+.adm-box .box-in { padding: 14px 16px; display: grid; gap: 12px; }
+.adm-box textarea.field { min-height: 160px; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
+.adm-box .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.imp-res { margin: 0; padding-left: 18px; font-size: 14px; color: var(--warn); }
+.chip.aguarda { background: var(--surface-2); color: var(--accent); }
+.sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-top: 6px; }
+.sep::before, .sep::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+form.pa { display: grid; gap: 12px; }
+.btn.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; font-size: 15px; }
+.btn.gbtn svg { width: 20px; height: 20px; flex: none; }

@@ -26,7 +26,7 @@ TIPOS = {
     "especialista": "Especialista",
 }
 
-EQUIPES = ("Recreio", "Lua", "Elite", "Águias", "Pé no Chão", "Tubarões", "Magnatas", "Elim")
+EQUIPES = ("Recreio", "Lua", "Elite", "Águias", "Pé no Chão", "Tubarões", "Magnatas", "Elim", "Exodus Benefícios")
 
 SITUACOES = ("pendente", "ativo", "bloqueado")
 

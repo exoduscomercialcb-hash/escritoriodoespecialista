@@ -13,10 +13,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.config import url_do_banco
-from app.db import Base, Pessoa, criar_engine, iniciar_banco
+from app.db import Base, criar_engine, iniciar_banco
 from app.main import criar_app
 
-from .conftest import ADMIN, HOST, cfg_teste, criar_link, entrar
+from .conftest import ADMIN, HOST, cfg_teste, cpf_inventado, entrar, primeiro_acesso
 
 URL = os.environ.get("TESTE_POSTGRES_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="sem TESTE_POSTGRES_URL")
@@ -47,24 +47,16 @@ def test_fluxo_da_etapa_1_no_postgres(url_limpa):
     app = criar_app(cfg_teste(database_url=url_limpa))
     with TestClient(app, base_url=f"https://{HOST}") as adm, TestClient(app, base_url=f"https://{HOST}") as c:
         entrar(adm, ADMIN, "Admin Teste")
-        with app.state.Sessao() as s:
-            lider = Pessoa(nome="Lider Inventado", email="lider@exemplo.com.br", tipo="lider", equipe="Elim",
-                           nome_sga="LIDER INVENTADO", situacao="ativo")
-            s.add(lider)
-            s.commit()
-            lider_id = lider.id
-        link = criar_link(adm, "especialista", validade="2099-01-31")
-        assert link["validade_txt"] == "31/01/2099"
-        entrar(c, "esp@exemplo.com.br", link=link["codigo"])
-        assert c.post(f"/api/cadastro/{link['codigo']}", json={"nome": "Especialista Inventado"}).status_code == 200
-        p = adm.get("/api/admin/pessoas", params={"situacao": "pendente"}).json()["pessoas"][0]
-        r = adm.patch(f"/api/admin/pessoas/{p['id']}", json={"situacao": "ativo", "equipe": "Elim",
-                                                             "nome_sga": "ESPECIALISTA INVENTADO",
-                                                             "lider_id": lider_id})
-        assert r.status_code == 200, r.text
-        entrar(c, "esp@exemplo.com.br")
+        planilha = ("Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\n"
+                    f"Lider Inventado\tLíder\t{cpf_inventado(1)}\tElim\tLIDER INVENTADO\t\n"
+                    f"Especialista Inventado\tEspecialista\t{cpf_inventado(2)}\tElim\tESPECIALISTA INVENTADO\tLider Inventado\n")
+        r = adm.post("/api/admin/importar", json={"texto": planilha}).json()
+        assert (r["importado"], r["criados"]) == (True, 2), r
+        primeiro_acesso(c, cpf_inventado(2), "esp@exemplo.com.br")
+        assert c.get("/api/eu").json()["pessoa"]["lider_nome"] == "Lider Inventado"
         assert c.post("/api/acesso", json={"aba": "menu"}).status_code == 200
         rel = adm.get("/api/admin/acessos", params={"equipe": "Elim"}).json()
         assert [(x["nome"], x["entradas"], x["abas"]) for x in rel["resumo"]] == [
             ("Especialista Inventado", 1, {"menu": 1})]
-        assert adm.get("/api/admin/links").json()["links"][0]["usos"] == 1
+        assert adm.get("/api/admin/pessoas", params={"situacao": "aguardando"}).json()["pessoas"][0]["nome"] == \
+            "Lider Inventado"

@@ -64,16 +64,16 @@ Elas ficam trancadas para a API pública do Supabase: só o servidor do Escritó
    Se não conectar no banco, o log diz o motivo em português (por exemplo, "o Supabase recusou a senha"), sem mostrar a senha.
 4. Depois do primeiro deploy, copie o endereço `https://….onrender.com` e confira se ele está nos URIs de redirecionamento do Google (passo 2.4).
 
-## 4. Testar o login
+## 4. Testar o login e o primeiro acesso
 
-1. Abra `https://….onrender.com` e clique em **Entrar com Google** com o e-mail que está em `ADMIN_EMAILS`.
+1. Abra o endereço do escritório e clique em **Entrar com Google** com o e-mail que está em `ADMIN_EMAILS`.
    Você cai no menu principal com o card **Painel do administrador**.
-2. No painel, em **Links de cadastro**, gere um link do tipo **Especialista** e copie.
-3. Abra o link numa janela anônima e entre com outra conta Google. Escreva o nome e envie.
-   A tela mostra "Seu acesso ainda não foi liberado. Fale com a coordenação."
-4. Volte ao painel, em **Cadastros > Pendentes**: preencha a equipe, o nome exato no SGA e o líder e clique em **Aprovar**.
-   (Para aprovar especialista, é preciso ter pelo menos um líder já aprovado. Gere um link do tipo **Líder** primeiro.)
-5. Na janela anônima, entre de novo: agora abre o menu. Em **Acessos** aparecem as entradas e as abas abertas.
+2. No painel, em **Cadastros**, use **Importar planilha** (copie do Excel e cole) ou **Novo cadastro**.
+   O mínimo é **Nome, Tipo de conta e CPF**. A pessoa aparece como **Aguardando 1º acesso**.
+3. Mande para a pessoa só o endereço do escritório. No **primeiro acesso**, ela informa **CPF e WhatsApp**
+   e clica em **Continuar com Google**. Pronto: entra direto, e o WhatsApp fica gravado no cadastro dela.
+4. Das próximas vezes, ela só clica em **Entrar com Google**.
+5. Em **Acessos**, aparecem as entradas e as abas abertas de cada pessoa.
 
 ## 5. GitHub: só entra na `main` com os testes passando
 

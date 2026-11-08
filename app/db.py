@@ -49,6 +49,10 @@ class Pessoa(Base):
     equipe: Mapped[str | None] = mapped_column(String(40), nullable=True)
     nome_sga: Mapped[str | None] = mapped_column(String(160), nullable=True)
     lider_id: Mapped[int | None] = mapped_column(ForeignKey("pessoas.id", ondelete="SET NULL"), nullable=True)
+    # CPF (só números): é por ele que a pessoa, ao abrir o link, é ligada ao cadastro feito antes pela coordenação.
+    cpf: Mapped[str | None] = mapped_column(String(11), unique=True, index=True, nullable=True)
+    whatsapp: Mapped[str | None] = mapped_column(String(20), nullable=True)  # só números, com DDD
+    vinculado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 1º acesso
     situacao: Mapped[str] = mapped_column(String(12), default="pendente", index=True)
     link_id: Mapped[int | None] = mapped_column(ForeignKey("links_cadastro.id", ondelete="SET NULL"), nullable=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
@@ -112,8 +116,30 @@ def motivo_da_falha(erro: BaseException) -> str:
     return "erro de conexão com o banco"
 
 
+# Colunas acrescentadas depois que as tabelas já existiam no Supabase (create_all não mexe em tabela existente).
+COLUNAS_NOVAS = {
+    "pessoas": {"cpf": "VARCHAR(11)", "whatsapp": "VARCHAR(20)", "vinculado_em": "TIMESTAMP WITH TIME ZONE"},
+}
+INDICES_NOVOS = ['CREATE UNIQUE INDEX IF NOT EXISTS "ix_pessoas_cpf" ON "pessoas" ("cpf")']
+
+
+def migrar(engine: Engine) -> None:
+    with engine.begin() as conn:
+        tabelas = set(inspect(conn).get_table_names())
+        for tabela, colunas in COLUNAS_NOVAS.items():
+            if tabela not in tabelas:
+                continue
+            existentes = {c["name"] for c in inspect(conn).get_columns(tabela)}
+            for coluna, tipo in colunas.items():
+                if coluna not in existentes:
+                    conn.execute(text(f'ALTER TABLE "{tabela}" ADD COLUMN "{coluna}" {tipo}'))
+        for indice in INDICES_NOVOS:
+            conn.execute(text(indice))
+
+
 def iniciar_banco(engine: Engine) -> None:
     Base.metadata.create_all(engine)
+    migrar(engine)
     if engine.dialect.name == "postgresql":
         with engine.begin() as conn:
             for tabela in inspect(conn).get_table_names():

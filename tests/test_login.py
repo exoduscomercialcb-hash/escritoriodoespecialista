@@ -14,7 +14,7 @@ from .conftest import ADMIN, HOST, cfg_teste, criar_pessoa, entrar
 
 def test_sem_login_nada_abre(cliente):
     assert cliente.get("/api/eu").json()["estado"] == "anonimo"
-    for caminho in ("/api/admin/pessoas", "/api/admin/links", "/api/admin/acessos", "/api/meus-dados/situacao"):
+    for caminho in ("/api/admin/pessoas", "/api/admin/acessos", "/api/meus-dados/situacao"):
         r = cliente.get(caminho)
         assert r.status_code == 401, caminho
         assert r.json()["erro"] == "Entre com o Google para continuar."
@@ -91,7 +91,7 @@ def test_quem_nao_tem_cadastro_ve_aviso(cliente, db):
     assert entrar(cliente, "desconhecido@exemplo.com.br").headers["location"] == "/"
     eu = cliente.get("/api/eu").json()
     assert eu == {"estado": "sem_cadastro", "email": "desconhecido@exemplo.com.br", "nome": "Pessoa Teste",
-                  "link": None, "mensagem": MSG_NAO_LIBERADO}
+                  "mensagem": MSG_NAO_LIBERADO}
     assert MSG_NAO_LIBERADO == "Seu acesso ainda não foi liberado. Fale com a coordenação."
     assert db.scalars(select(Pessoa)).all() == []  # sem link, ninguém é criado
     assert cliente.get("/api/admin/pessoas").status_code == 401
@@ -130,15 +130,6 @@ def test_aprovado_depois_do_login_so_entra_de_novo(admin, novo_cliente, db):
 def test_sair_encerra_a_sessao(admin):
     assert admin.get("/auth/sair", follow_redirects=False).headers["location"] == "/"
     assert admin.get("/api/eu").json()["estado"] == "anonimo"
-
-
-def test_sair_com_link_volta_para_o_cadastro(admin):
-    """Erro de 08/11: quem saía para cadastrar outra conta perdia o link e via "acesso não liberado"."""
-    link = admin.post("/api/admin/links", json={"tipo": "lider"}).json()["link"]
-    r = admin.get("/auth/sair", params={"link": link["codigo"]}, follow_redirects=False)
-    assert r.headers["location"] == f"/cadastro/{link['codigo']}"
-    assert admin.get("/api/eu").json()["estado"] == "anonimo"
-    assert admin.get("/auth/sair", params={"link": "nao-existe"}, follow_redirects=False).headers["location"] == "/"
 
 
 def test_rota_de_teste_nao_existe_fora_do_modo_teste():

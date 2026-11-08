@@ -5,7 +5,7 @@ Sistema interno da Exodus Benefícios para especialistas, líderes e coordenaç�
 Endereço: https://escritorio.exodusbeneficios.com.br (Render). Especificação em `docs/ESPECIFICACAO.md`.
 
 ## Situação
-- **Etapa 1 (feita):** servidor, banco (Supabase), login com Google, links de cadastro por tipo de acesso, aprovação e painel do administrador (Cadastros, Links de cadastro e Acessos). Escolha da página pelo endereço. Lugar do botão "Atualizar meus dados" (a busca no SGA entra na etapa 2).
+- **Etapa 1 (feita):** servidor, banco (Supabase), login com Google e painel do administrador (Cadastros e Acessos). A coordenação cadastra antes (nome, tipo de conta e CPF, um por um ou colando a planilha); no primeiro acesso, a pessoa informa CPF e WhatsApp e entra com o Google, num endereço só. Escolha da página pelo endereço. Lugar do botão "Atualizar meus dados" (a busca no SGA entra na etapa 2).
 - Para publicar: `docs/PASSO_A_PASSO_ETAPA1.md` (Supabase, Google Cloud e Render).
 
 ## Onde fica cada coisa
@@ -14,7 +14,8 @@ Endereço: https://escritorio.exodusbeneficios.com.br (Render). Especificação 
 | `app/main.py` | monta o servidor, a escolha da página pelo endereço e os cabeçalhos de segurança |
 | `app/config.py` | lê as variáveis de ambiente (nomes em `.env.example`) |
 | `app/db.py` | tabelas `pessoas`, `links_cadastro` e `acessos` |
-| `app/servicos.py` | regras: login, cadastro pelo link, aprovação e acessos |
+| `app/servicos.py` | regras: login, primeiro acesso (CPF e WhatsApp), aprovação e acessos |
+| `app/cadastro.py` | cadastro pela coordenação: um por um e importação da planilha |
 | `app/rotas.py`, `app/rotas_admin.py` | endereços da API |
 | `app/static/` | a página (visual da página atual) e a página neutra |
 | `tests/` | testes automáticos (rodam no GitHub Actions a cada mudança) |

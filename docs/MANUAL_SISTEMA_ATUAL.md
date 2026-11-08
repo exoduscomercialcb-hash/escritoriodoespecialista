@@ -81,6 +81,7 @@ Dono: Rafael Veiga (coordenador, Exodus Benefícios). Responder sempre em portug
 | 04/11 | SGA recusou o login (401 "Login ou senha inválido") e oscilou (ReadTimeout/ProxyError) | Instabilidade ou bloqueio do SGA | Parar a extração (regra 1.4) e aplicar comprovantes/cidades sem SGA (`cid_pc.py` + `pix.py`) | Regra 1.4 |
 | — | Funções da página inacessíveis no teste (`CP is not defined`) | Código dentro de uma IIFE | Gancho `window.__teste` só em `file://` | T4–T6 |
 | 07/11 | Escritório novo no Render não ligava: "failed to resolve host" e depois "password authentication failed"; um pedaço da senha do banco apareceu no log | Senha do banco escrita à mão no meio do DATABASE_URL (com `@`, colchete e quebra de linha) | Senha em variável separada (`DATABASE_PASSWORD`), encaixada pelo servidor no lugar do `[YOUR-PASSWORD]`; falha de conexão explicada em português, sem a senha; senha do banco trocada | `tests/test_banco_config.py` |
+| 08/11 | Link de cadastro aberto já logado ia para o menu; ao trocar de conta, o Google voltava com "acesso não liberado" | O link se perdia ao sair e entrar de novo | Links de cadastro substituídos pelo endereço único com primeiro acesso por CPF e WhatsApp (decisão do Rafael); quem entra pelo Google sem CPF recebe o pedido de CPF em seguida | `tests/test_cadastro.py`, `tests/test_interface.py` |
 
 ## 6.1 Criar acesso de especialista (liderado)
 1. Novo `id` = próximo número; chave `k` aleatória (32 bytes). Entrada em `spec_keys.json` com `nome`, `eqs` e `sga` (nome exato do voluntário no SGA).

@@ -6,15 +6,14 @@ from __future__ import annotations
 
 import ipaddress
 import re
-import secrets
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .config import EQUIPES, SITUACOES, TIPOS, Config
-from .db import Acesso, LinkCadastro, Pessoa
+from .db import Acesso, Pessoa
 from .tempo import agora, fim_do_dia, formatar, inicio_do_dia, iso, utc
 
 MSG_NAO_LIBERADO = "Seu acesso ainda não foi liberado. Fale com a coordenação."
@@ -43,6 +42,48 @@ def limpar_nome_sga(valor: str | None) -> str | None:
     return nome or None
 
 
+def so_numeros(valor: str | None) -> str:
+    return re.sub(r"\D", "", valor or "")
+
+
+def cpf_valido(cpf: str) -> bool:
+    if len(cpf) != 11 or cpf == cpf[0] * 11:
+        return False
+    for tamanho in (9, 10):
+        soma = sum(int(d) * (tamanho + 1 - i) for i, d in enumerate(cpf[:tamanho]))
+        if (soma * 10 % 11) % 10 != int(cpf[tamanho]):
+            return False
+    return True
+
+
+def limpar_cpf(valor: str | None) -> str:
+    cpf = so_numeros(valor).zfill(11) if so_numeros(valor) else ""
+    if not cpf_valido(cpf):
+        raise ErroRegra("CPF inválido. Confira os 11 números.")
+    return cpf
+
+
+def formatar_cpf(cpf: str | None) -> str:
+    return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if cpf and len(cpf) == 11 else ""
+
+
+def limpar_whatsapp(valor: str | None) -> str:
+    """WhatsApp com DDD, guardado só com números (ex.: 21987654321). Aceita +55 na frente."""
+    numero = so_numeros(valor)
+    if len(numero) in (12, 13) and numero.startswith("55"):
+        numero = numero[2:]
+    if len(numero) not in (10, 11) or numero[0] == "0":
+        raise ErroRegra("WhatsApp inválido. Escreva com DDD, por exemplo (21) 98765-4321.")
+    return numero
+
+
+def formatar_whatsapp(numero: str | None) -> str:
+    if not numero:
+        return ""
+    meio = 7 if len(numero) == 11 else 6
+    return f"({numero[:2]}) {numero[2:meio]}-{numero[meio:]}"
+
+
 def ip_resumido(ip: str | None) -> str | None:
     """Guarda só o começo do IP: '201.17.33.x' ou '2804:14c:5b::x'."""
     try:
@@ -66,8 +107,12 @@ def pessoa_para_json(p: Pessoa) -> dict:
         "id": p.id, "nome": p.nome, "email": p.email, "tipo": p.tipo, "tipo_nome": TIPOS.get(p.tipo, p.tipo),
         "equipe": p.equipe, "nome_sga": p.nome_sga, "lider_id": p.lider_id,
         "lider_nome": p.lider.nome if p.lider else None, "situacao": p.situacao,
+        "cpf": formatar_cpf(p.cpf), "whatsapp": formatar_whatsapp(p.whatsapp),
+        "aguardando_primeiro_acesso": p.email is None,
+        "faltando": requisitos_para_aprovar(p.tipo, p.equipe, p.nome_sga, p.lider_id),
         "criado_em": iso(p.criado_em), "criado_em_txt": formatar(p.criado_em),
         "aprovado_em_txt": formatar(p.aprovado_em), "aprovado_por": p.aprovado_por,
+        "vinculado_em_txt": formatar(p.vinculado_em),
     }
 
 
@@ -84,8 +129,10 @@ def concluir_login(db: Session, sessao: dict, cfg: Config, *, email: str, sub: s
     email = (email or "").strip().lower()
     if not email:
         raise ErroRegra("O Google não informou o e-mail.")
-    codigo_link = sessao.get("link")
+    pre = sessao.get("pre")
     p = achar_pessoa(db, email, sub)
+    if p is None and pre:
+        p = vincular_pre_cadastro(db, pre, email, sub)
 
     if email in cfg.admin_emails:  # ADMIN_EMAILS manda: sempre admin e sempre ativo
         if p is None:
@@ -101,6 +148,12 @@ def concluir_login(db: Session, sessao: dict, cfg: Config, *, email: str, sub: s
         if p.email != email:
             p.email = email
 
+    return abrir_sessao(db, sessao, p, ip, email=email, sub=sub, nome=nome)
+
+
+def abrir_sessao(db: Session, sessao: dict, p: Pessoa | None, ip: str | None, *, email: str, sub: str | None,
+                 nome: str | None) -> str:
+    """Ativo: entra e registra a entrada. Senão, guarda só quem o Google confirmou (para o primeiro acesso)."""
     sessao.clear()
     if p is not None and p.situacao == "ativo":
         db.flush()
@@ -108,13 +161,49 @@ def concluir_login(db: Session, sessao: dict, cfg: Config, *, email: str, sub: s
         db.add(Acesso(pessoa_id=p.id, aba="entrada", ip=ip_resumido(ip)))
         db.commit()
         return "/"
-
     db.commit()
     sessao["google"] = {"email": email, "sub": sub, "nome": limpar_espacos(nome)}
-    if p is None and codigo_link and link_valido(db, codigo_link):
-        sessao["link"] = codigo_link
-        return f"/cadastro/{codigo_link}"
     return "/"
+
+
+def ligar_conta_google(p: Pessoa, email: str, sub: str | None, whatsapp: str | None) -> None:
+    p.email, p.google_sub, p.vinculado_em = email, sub, agora()
+    if whatsapp:
+        p.whatsapp = whatsapp
+
+
+def vincular_pre_cadastro(db: Session, pre: dict, email: str, sub: str | None) -> Pessoa | None:
+    """Depois do Google: liga a conta ao cadastro achado pelo CPF no primeiro acesso e grava o WhatsApp."""
+    alvo = db.get(Pessoa, pre.get("id") or 0)
+    if alvo is None or alvo.email is not None or alvo.situacao == "bloqueado":
+        return None
+    ligar_conta_google(alvo, email, sub, pre.get("whatsapp"))
+    return alvo
+
+
+def primeiro_acesso(db: Session, sessao: dict, cpf: str, whatsapp: str, ip: str | None) -> str:
+    """Primeiro acesso: CPF (acha o cadastro feito pela coordenação) e WhatsApp. Devolve para onde seguir.
+
+    Se a pessoa já entrou com o Google (e a conta ainda não estava ligada), liga na hora.
+    Se ainda não, guarda o cadastro achado e manda para o login do Google.
+    """
+    cpf, whatsapp = limpar_cpf(cpf), limpar_whatsapp(whatsapp)
+    p = db.scalars(select(Pessoa).where(Pessoa.cpf == cpf)).first()
+    if p is None:
+        raise ErroRegra("Não encontramos um cadastro com esse CPF. Fale com a coordenação.")
+    if p.situacao == "bloqueado":
+        raise ErroRegra(MSG_NAO_LIBERADO)
+    if p.email is not None:
+        raise ErroRegra("Esse CPF já está ligado a uma conta Google. Clique em Entrar com Google e use essa conta. "
+                        "Se trocou de conta, fale com a coordenação.")
+    google = sessao.get("google")
+    if google and google.get("email"):
+        if achar_pessoa(db, google["email"], google.get("sub")) is not None:
+            raise ErroRegra("Esta conta Google já está ligada a outro cadastro. Fale com a coordenação.")
+        ligar_conta_google(p, google["email"], google.get("sub"), whatsapp)
+        return abrir_sessao(db, sessao, p, ip, email=google["email"], sub=google.get("sub"), nome=google.get("nome"))
+    sessao["pre"] = {"id": p.id, "whatsapp": whatsapp}
+    return "/auth/login"
 
 
 def requisitos_para_aprovar(tipo: str, equipe: str | None, nome_sga: str | None, lider_id: int | None) -> list[str]:
@@ -132,8 +221,14 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
     """Aprovar, editar ou bloquear um cadastro (painel do administrador)."""
     novo = {
         "nome": alvo.nome, "tipo": alvo.tipo, "equipe": alvo.equipe, "nome_sga": alvo.nome_sga,
-        "lider_id": alvo.lider_id, "situacao": alvo.situacao,
+        "lider_id": alvo.lider_id, "situacao": alvo.situacao, "cpf": alvo.cpf, "whatsapp": alvo.whatsapp,
     }
+    if "cpf" in dados:
+        novo["cpf"] = limpar_cpf(dados["cpf"]) if so_numeros(dados["cpf"]) else None
+        if novo["cpf"] and db.scalars(select(Pessoa).where(Pessoa.cpf == novo["cpf"], Pessoa.id != alvo.id)).first():
+            raise ErroRegra("Já existe outro cadastro com esse CPF.")
+    if "whatsapp" in dados:
+        novo["whatsapp"] = limpar_whatsapp(dados["whatsapp"]) if so_numeros(dados["whatsapp"]) else None
     if "nome" in dados:
         novo["nome"] = limpar_nome(dados["nome"])
     if "tipo" in dados:
@@ -166,7 +261,7 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
         raise ErroRegra("Só o administrador mexe em acessos de administrador.")
     if alvo.email and alvo.email in cfg.admin_emails and (novo["tipo"] != "admin" or novo["situacao"] != "ativo"):
         raise ErroRegra("Este e-mail está em ADMIN_EMAILS no Render: continua administrador e ativo.")
-    if novo["situacao"] == "ativo":
+    if novo["situacao"] == "ativo" and alvo.situacao != "ativo":  # aprovar um pendente ou liberar um bloqueado
         faltando = requisitos_para_aprovar(novo["tipo"], novo["equipe"], novo["nome_sga"], novo["lider_id"])
         if faltando:
             raise ErroRegra(f"Para aprovar como {TIPOS[novo['tipo']].lower()}, preencha: " + ", ".join(faltando) + ".")
@@ -178,72 +273,6 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
     db.commit()
     db.refresh(alvo)
     return alvo
-
-
-# ---------------------------------------------------------------- links de cadastro
-
-def situacao_do_link(link: LinkCadastro) -> str:
-    if not link.ativo:
-        return "desativado"
-    if link.validade is not None and agora() >= utc(link.validade):
-        return "vencido"
-    return "ativo"
-
-
-def link_valido(db: Session, codigo: str) -> LinkCadastro | None:
-    link = db.scalars(select(LinkCadastro).where(LinkCadastro.codigo == (codigo or ""))).first()
-    return link if link is not None and situacao_do_link(link) == "ativo" else None
-
-
-def criar_link(db: Session, tipo: str, validade: str | None, quem: Pessoa) -> LinkCadastro:
-    if tipo not in TIPOS:
-        raise ErroRegra("Tipo de acesso desconhecido.")
-    if tipo == "admin" and quem.tipo != "admin":
-        raise ErroRegra("Só o administrador gera link de administrador.")
-    vence = None
-    if validade:
-        try:
-            dia = date.fromisoformat(validade)
-        except ValueError:
-            raise ErroRegra("Data de validade inválida.") from None
-        if fim_do_dia(dia) <= agora():
-            raise ErroRegra("A validade precisa ser hoje ou depois.")
-        vence = fim_do_dia(dia)
-    link = LinkCadastro(tipo=tipo, codigo=secrets.token_urlsafe(12), validade=vence, criado_por=quem.email)
-    db.add(link)
-    db.commit()
-    return link
-
-
-def link_para_json(link: LinkCadastro, base_url: str) -> dict:
-    vence = utc(link.validade)
-    return {
-        "id": link.id, "tipo": link.tipo, "tipo_nome": TIPOS.get(link.tipo, link.tipo), "codigo": link.codigo,
-        "url": base_url.rstrip("/") + "/cadastro/" + link.codigo, "ativo": link.ativo, "usos": link.usos,
-        "situacao": situacao_do_link(link),
-        # validade é guardada como 00:00 do dia seguinte; na tela aparece o último dia que vale
-        "validade_txt": formatar(vence - timedelta(minutes=1))[:10] if vence else "",
-        "criado_em_txt": formatar(link.criado_em), "criado_por": link.criado_por,
-    }
-
-
-def cadastrar(db: Session, sessao: dict, codigo: str, nome: str) -> Pessoa:
-    """A pessoa abriu o link, entrou com o Google e preencheu o nome: fica pendente."""
-    google = sessao.get("google")
-    if not google or not google.get("email"):
-        raise ErroRegra("Entre com o Google antes de preencher o cadastro.")
-    link = link_valido(db, codigo)
-    if link is None:
-        raise ErroRegra("Este link de cadastro não vale mais. Peça um novo à coordenação.")
-    if achar_pessoa(db, google["email"], google.get("sub")) is not None:
-        raise ErroRegra("Este e-mail já tem cadastro. " + MSG_NAO_LIBERADO)
-    p = Pessoa(nome=limpar_nome(nome), email=google["email"], google_sub=google.get("sub"), tipo=link.tipo,
-               situacao="pendente", link_id=link.id)
-    link.usos = (link.usos or 0) + 1
-    db.add(p)
-    db.commit()
-    sessao.pop("link", None)
-    return p
 
 
 # ---------------------------------------------------------------- acessos

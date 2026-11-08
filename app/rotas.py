@@ -9,11 +9,10 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .config import TIPOS
 from .db import Pessoa
 from .dependencias import banco, config, exige_json, exige_pessoa, ip_do_cliente, pessoa_logada
-from .servicos import (MSG_NAO_LIBERADO, achar_pessoa, cadastrar, concluir_login, link_valido, pessoa_para_json,
-                       pode_ver_painel, registrar_acesso)
+from .servicos import (MSG_NAO_LIBERADO, achar_pessoa, concluir_login, pessoa_para_json, pode_ver_painel, primeiro_acesso,
+                       registrar_acesso)
 
 ESTATICOS = Path(__file__).parent / "static"
 PAGINA = ESTATICOS / "escritorio.html"
@@ -32,7 +31,6 @@ def saude():
 
 
 @rotas.get("/", include_in_schema=False)
-@rotas.get("/cadastro/{codigo}", include_in_schema=False)
 def pagina():
     return FileResponse(PAGINA, media_type="text/html; charset=utf-8")
 
@@ -40,13 +38,11 @@ def pagina():
 # ---------------------------------------------------------------- login com Google
 
 @rotas.get("/auth/login", include_in_schema=False)
-async def auth_login(request: Request, link: str | None = None, db: Session = Depends(banco)):
+async def auth_login(request: Request):
     if not config(request).google_configurado:
         return HTMLResponse("<!doctype html><meta charset=utf-8><title>Escritório do Especialista</title>"
                             "<p>O login com Google ainda não foi configurado no servidor.</p>", status_code=503)
     request.session.pop("google", None)
-    if link and link_valido(db, link):
-        request.session["link"] = link
     destino = str(request.url_for("auth_callback"))
     return await request.app.state.oauth.google.authorize_redirect(request, destino)
 
@@ -66,19 +62,14 @@ async def auth_callback(request: Request, db: Session = Depends(banco)):
 
 
 @rotas.get("/auth/sair", include_in_schema=False)
-def auth_sair(request: Request, link: str | None = None, db: Session = Depends(banco)):
-    """Sai da conta. Com ?link=, volta para o cadastro daquele link (para cadastrar outra conta Google)."""
+def auth_sair(request: Request):
     request.session.clear()
-    destino = f"/cadastro/{link}" if link and link_valido(db, link) else "/"
-    return RedirectResponse(destino, status_code=303)
+    return RedirectResponse("/", status_code=303)
 
 
 @rotas_teste.get("/teste/entrar", include_in_schema=False)
-def teste_entrar(request: Request, email: str, nome: str = "Pessoa de Teste", link: str | None = None,
-                 db: Session = Depends(banco)):
+def teste_entrar(request: Request, email: str, nome: str = "Pessoa de Teste", db: Session = Depends(banco)):
     """Login sem Google, só para os testes automáticos. Não existe no Render (ver config.modo_teste)."""
-    if link:
-        request.session["link"] = link
     destino = concluir_login(db, request.session, config(request), email=email, sub="teste-" + email.lower(),
                              nome=nome, ip=ip_do_cliente(request))
     return RedirectResponse(destino, status_code=303)
@@ -87,7 +78,8 @@ def teste_entrar(request: Request, email: str, nome: str = "Pessoa de Teste", li
 # ---------------------------------------------------------------- API
 
 class CorpoCadastro(BaseModel):
-    nome: str
+    cpf: str
+    whatsapp: str
 
 
 class CorpoAcesso(BaseModel):
@@ -107,21 +99,14 @@ def eu(request: Request, db: Session = Depends(banco), p: Pessoa | None = Depend
         return {"estado": "anonimo", "google_configurado": cfg.google_configurado,
                 "aviso": "Seu acesso foi liberado. Entre com o Google."}
     return {"estado": existente.situacao if existente else "sem_cadastro", "email": google["email"],
-            "nome": google.get("nome"), "link": request.session.get("link"), "mensagem": MSG_NAO_LIBERADO}
+            "nome": google.get("nome"), "mensagem": MSG_NAO_LIBERADO}
 
 
-@rotas.get("/api/cadastro/{codigo}")
-def info_do_link(codigo: str, db: Session = Depends(banco)):
-    link = link_valido(db, codigo)
-    if link is None:
-        return {"valido": False, "mensagem": "Este link de cadastro não vale mais. Peça um novo à coordenação."}
-    return {"valido": True, "tipo": link.tipo, "tipo_nome": TIPOS[link.tipo]}
-
-
-@rotas.post("/api/cadastro/{codigo}", dependencies=[Depends(exige_json)])
-def enviar_cadastro(codigo: str, corpo: CorpoCadastro, request: Request, db: Session = Depends(banco)):
-    cadastrar(db, request.session, codigo, corpo.nome)
-    return {"estado": "pendente", "mensagem": MSG_NAO_LIBERADO}
+@rotas.post("/api/primeiro-acesso", dependencies=[Depends(exige_json)])
+def api_primeiro_acesso(corpo: CorpoCadastro, request: Request, db: Session = Depends(banco)):
+    """Primeiro acesso: CPF e WhatsApp. Responde para onde seguir (login do Google ou já para dentro)."""
+    return {"ok": True, "proximo": primeiro_acesso(db, request.session, corpo.cpf, corpo.whatsapp,
+                                                   ip_do_cliente(request))}
 
 
 @rotas.post("/api/acesso", dependencies=[Depends(exige_json)])

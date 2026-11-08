@@ -90,3 +90,25 @@ def test_falha_no_banco_ao_ligar_da_mensagem_clara_sem_senha(monkeypatch, caplog
     assert "o Supabase recusou a senha" in caplog.text
     assert "servidor aws-0-us-east-1.pooler.supabase.com" in caplog.text
     assert "SenhaInventada2026" not in caplog.text
+
+
+def test_migracao_acrescenta_colunas_na_tabela_antiga(tmp_path):
+    """O banco do Supabase já tinha a tabela pessoas sem CPF e WhatsApp (etapa 1 de 07/11)."""
+    from sqlalchemy import inspect, text
+
+    from app.db import criar_engine, iniciar_banco
+    engine = criar_engine(f"sqlite:///{tmp_path / 'antigo.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE pessoas (id INTEGER PRIMARY KEY, nome VARCHAR(120), email VARCHAR(254), "
+                          "google_sub VARCHAR(64), tipo VARCHAR(30), equipe VARCHAR(40), nome_sga VARCHAR(160), "
+                          "lider_id INTEGER, situacao VARCHAR(12), link_id INTEGER, criado_em DATETIME, "
+                          "aprovado_em DATETIME, aprovado_por VARCHAR(254))"))
+        conn.execute(text("INSERT INTO pessoas (nome, tipo, situacao) VALUES ('Pessoa Antiga Inventada', 'admin', 'ativo')"))
+    iniciar_banco(engine)
+    iniciar_banco(engine)  # de novo, sem erro
+    colunas = {c["name"] for c in inspect(engine).get_columns("pessoas")}
+    assert {"cpf", "whatsapp", "vinculado_em"} <= colunas
+    assert any(i["name"] == "ix_pessoas_cpf" and i["unique"] for i in inspect(engine).get_indexes("pessoas"))
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT nome FROM pessoas")).scalar() == "Pessoa Antiga Inventada"
+    engine.dispose()

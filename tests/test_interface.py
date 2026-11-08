@@ -1,4 +1,4 @@
-"""Teste da tela no navegador (Playwright): login, menu, painel e cadastro pelo link.
+"""Teste da tela no navegador (Playwright): login, primeiro acesso pelo CPF, menu e painel.
 
 Sobe o servidor de verdade (uvicorn) num banco SQLite temporário e usa a rota de login de teste.
 Se o Playwright não estiver instalado, o teste é pulado; no GitHub Actions ele é obrigatório
@@ -17,7 +17,7 @@ import uvicorn
 from app.db import Pessoa
 from app.main import criar_app
 
-from .conftest import ADMIN, cfg_teste
+from .conftest import ADMIN, cfg_teste, cpf_inventado
 
 try:
     from playwright.sync_api import expect, sync_playwright
@@ -73,7 +73,7 @@ def _pagina(navegador, largura=1300):
     pg = ctx.new_page()
     erros: list[str] = []
     pg.on("pageerror", lambda e: erros.append(str(e)))
-    # 400 = recusa esperada de uma regra (o teste tenta aprovar sem os campos obrigatórios)
+    # 400 = recusa esperada de uma regra (o teste digita um CPF que não tem cadastro)
     pg.on("console", lambda m: erros.append(m.text) if m.type == "error" and "status of 400" not in m.text else None)
     pg.route("https://**/*", lambda r: r.abort())  # nada sai da máquina durante o teste
     return ctx, pg, erros
@@ -98,7 +98,7 @@ def test_tela_de_login(servidor, navegador):
         ctx.close()
 
 
-def test_fluxo_completo_admin_link_cadastro_aprovacao_acessos(servidor, navegador):
+def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     adm_ctx, adm, erros_adm = _pagina(navegador)
     adm.goto(servidor + f"/teste/entrar?email={ADMIN}&nome=Admin%20Teste")
 
@@ -107,56 +107,40 @@ def test_fluxo_completo_admin_link_cadastro_aprovacao_acessos(servidor, navegado
     expect(adm.locator('#home [data-go="adm"] h3')).to_have_text("Painel do administrador")
     expect(adm.locator("#btnAtualizar")).to_be_disabled()
     expect(adm.locator("#updTexto")).to_contain_text("Pode usar 1 vez a cada 15 minutos")
-    expect(adm.locator("#pfs-adm")).to_have_text("Nenhum cadastro pendente")
+    expect(adm.locator("#pfs-adm")).to_have_text("Todos os cadastrados já entraram")
 
-    # gera um link de especialista
+    # o admin importa a planilha (colada do Excel) e faz um cadastro avulso
     adm.click('#home [data-go="adm"]')
     expect(adm.locator("#adminView")).to_be_visible()
-    adm.click('[data-adm="lnk"]')
-    adm.select_option("#lnkTipo", "especialista")
-    adm.click("#lnkForm button[type=submit]")
-    campo = adm.locator("#lnkTabela tbody tr").first.locator("input")
-    expect(campo).to_have_value(servidor + "/cadastro/" + campo.input_value().rsplit("/", 1)[-1])
-    url_link = campo.input_value()
-    codigo = url_link.rsplit("/", 1)[-1]
+    cpf_esp, cpf_cad = cpf_inventado(501), cpf_inventado(502)
+    adm.click("#boxImportar summary")
+    adm.fill("#impTexto", "Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\n"
+                          f"Especialista Novo Inventado\tEspecialista\t{cpf_esp}\tElite\tespecialista novo inventado\tLider Inventado\n")
+    adm.click("#impEnviar")
+    expect(adm.locator("#impResultado")).to_contain_text("1 cadastro(s) novo(s)")
+    adm.click("#boxNovo summary")
+    adm.fill("#novoNome", "Cadastro Avulso Inventado")
+    adm.select_option("#novoTipo", "cadastro")
+    adm.fill("#novoCpf", cpf_cad)
+    adm.click("#novoForm button[type=submit]")
+    adm.click('#cadFiltro [data-sit="aguardando"]')
+    expect(adm.locator("#cadLista article")).to_have_count(2)
+    expect(adm.locator("#cadLista article", has_text="Especialista Novo Inventado")).to_contain_text("Aguardando 1º acesso")
 
-    # o admin, já logado, abre o link: vê que está conectado e o botão de sair mantém o link (erro de 08/11)
-    aba = adm_ctx.new_page()
-    aba.goto(url_link)
-    expect(aba.locator("#jaConectado")).to_contain_text("Você já está conectado como Admin Teste")
-    assert aba.locator("#sairCadastrar").get_attribute("href") == f"/auth/sair?link={codigo}"
-    aba.close()
-
-    # a pessoa abre o link sem estar logada: vai direto para o login do Google, levando o link
+    # a pessoa abre o endereço do escritório no celular: primeiro acesso com CPF e WhatsApp, depois o Google
     ctx, pg, erros = _pagina(navegador, 390)
-    with pg.expect_request(lambda r: r.url.endswith(f"/auth/login?link={codigo}")):
-        pg.goto(url_link)
-    # entra (login de teste, no lugar do Google) e preenche o nome
-    pg.goto(servidor + f"/teste/entrar?email=especialista.novo@exemplo.com.br&nome=Nome%20Google&link={codigo}")
-    expect(pg.locator("#cadNome")).to_have_value("Nome Google")
-    pg.fill("#cadNome", "Especialista Novo Inventado")
-    pg.click("#cadEnviar")
-    expect(pg.locator("#naoLiberado")).to_have_text("Seu acesso ainda não foi liberado. Fale com a coordenação.")
+    pg.goto(servidor + "/")
+    expect(pg.locator("#go")).to_have_text("Entrar com Google")
+    pg.fill("#paCpf", cpf_inventado(999))
+    pg.fill("#paWhats", "(21) 98765-4321")
+    pg.click("#paEnviar")
+    expect(pg.locator("#paErro")).to_have_text("Não encontramos um cadastro com esse CPF. Fale com a coordenação.")
+    pg.fill("#paCpf", cpf_esp)
     assert _sem_rolagem_lateral(pg)
-    assert not erros, erros
-
-    # o admin aprova, ligando ao nome do SGA, à equipe e ao líder
-    adm.click('[data-adm="cad"]')
-    cartao = adm.locator("#cadLista article", has_text="Especialista Novo Inventado")
-    cartao.locator("button", has_text="Aprovar").click()
-    expect(cartao.locator(".err")).to_contain_text("preencha: equipe, nome no SGA, líder")
-    cartao.locator("select").nth(1).select_option("Elite")
-    cartao.locator("input").nth(1).fill("especialista novo inventado")
-    cartao.locator("select").nth(2).select_option(label="Lider Inventado (Elite)")
-    cartao.locator("button", has_text="Aprovar").click()
-    expect(adm.locator("#cadLista")).to_contain_text("Nenhum cadastro pendente.")
-    adm.click('#cadFiltro [data-sit="ativo"]')
-    ativo = adm.locator("#cadLista article", has_text="Especialista Novo Inventado")
-    expect(ativo).to_contain_text("SGA: ESPECIALISTA NOVO INVENTADO")
-    expect(ativo).to_contain_text("Líder: Lider Inventado")
-
-    # agora a pessoa entra e vê a tela dela, sem o painel
-    pg.goto(servidor + "/teste/entrar?email=especialista.novo@exemplo.com.br")
+    with pg.expect_request(lambda r: r.url.endswith("/auth/login")):
+        pg.click("#paEnviar")
+    # volta do Google (aqui, login de teste) já com acesso
+    pg.goto(servidor + "/teste/entrar?email=especialista.novo@exemplo.com.br&nome=Nome%20Google")
     expect(pg.locator("#hName")).to_have_text("Especialista Novo Inventado")
     expect(pg.locator("#hWho")).to_have_text("Especialista · Equipe Elite")
     expect(pg.locator("#homeVazio")).to_be_visible()
@@ -165,13 +149,30 @@ def test_fluxo_completo_admin_link_cadastro_aprovacao_acessos(servidor, navegado
     assert not erros, erros
     ctx.close()
 
-    # o link mostra 1 pessoa cadastrada, e os acessos mostram quem entrou
-    adm.click('[data-adm="lnk"]')
-    expect(adm.locator(f'#lnkTabela tr[data-codigo="{codigo}"] td.r')).to_have_text("1")
+    # quem clica direto em "Entrar com Google" no primeiro acesso informa o CPF depois
+    ctx, pg, erros = _pagina(navegador, 390)
+    pg.goto(servidor + "/teste/entrar?email=cadastro.avulso@exemplo.com.br")
+    expect(pg.locator("#semCadastro")).to_be_visible()
+    pg.fill("#paCpf", cpf_cad)
+    pg.fill("#paWhats", "21 99999-0000")
+    pg.click("#paEnviar")
+    expect(pg.locator("#hName")).to_have_text("Cadastro Avulso Inventado")
+    assert not erros, erros
+    ctx.close()
+
+    # o admin vê o WhatsApp e o 1º acesso no cadastro
+    adm.click('[data-adm="cad"]')
+    adm.click('#cadFiltro [data-sit="ativo"]')
+    ativo = adm.locator("#cadLista article", has_text="Especialista Novo Inventado")
+    expect(ativo).to_contain_text("WhatsApp (21) 98765-4321")
+    expect(ativo).to_contain_text("1º acesso:")
+    expect(ativo).to_contain_text("Líder: Lider Inventado")
+
+    # os acessos mostram quem entrou
     adm.click('[data-adm="acs"]')
     linha = adm.locator("#acsResumo tbody tr", has_text="Especialista Novo Inventado")
     expect(linha.locator("td.r")).to_have_text("1")
-    expect(adm.locator("#acsEventos")).to_contain_text("Painel: Links")
+    expect(adm.locator("#acsEventos")).to_contain_text("Painel: Cadastros")
     adm.select_option("#acsEquipe", "Elite")
     adm.click("#acsForm button[type=submit]")
     expect(adm.locator("#acsResumo tbody tr")).to_have_count(1)

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.db import Pessoa
 from app.main import criar_app
 
-from .conftest import ADMIN, HOST, cfg_teste, criar_link, criar_pessoa, entrar
+from .conftest import ADMIN, HOST, cfg_teste, cpf_inventado, criar_pessoa, entrar, pre_cadastro, primeiro_acesso
 
 
 def test_admin_ve_o_painel(admin):
@@ -14,8 +14,9 @@ def test_admin_ve_o_painel(admin):
     op = admin.get("/api/admin/opcoes").json()
     assert [t["id"] for t in op["tipos"]] == ["admin", "coordenacao", "financeiro", "cadastro", "lider",
                                              "vendedora_interna", "especialista"]
-    assert op["equipes"] == ["Recreio", "Lua", "Elite", "Águias", "Pé no Chão", "Tubarões", "Magnatas", "Elim"]
-    for caminho in ("/api/admin/pessoas", "/api/admin/links", "/api/admin/acessos"):
+    assert op["equipes"] == ["Recreio", "Lua", "Elite", "Águias", "Pé no Chão", "Tubarões", "Magnatas", "Elim",
+                             "Exodus Benefícios"]
+    for caminho in ("/api/admin/pessoas", "/api/admin/acessos"):
         assert admin.get(caminho).status_code == 200
 
 
@@ -25,9 +26,9 @@ def test_quem_nao_e_admin_nao_abre_o_painel(novo_cliente, db):
         c = novo_cliente()
         entrar(c, f"p{i}@exemplo.com.br")
         assert c.get("/api/eu").json()["painel"] is False
-        for caminho in ("/api/admin/pessoas", "/api/admin/links", "/api/admin/acessos", "/api/admin/opcoes"):
+        for caminho in ("/api/admin/pessoas", "/api/admin/acessos", "/api/admin/opcoes"):
             assert c.get(caminho).status_code == 403, (tipo, caminho)
-        assert c.post("/api/admin/links", json={"tipo": "admin"}).status_code == 403
+        assert c.post("/api/admin/importar", json={"texto": "x"}).status_code == 403
 
 
 def test_especialista_so_recebe_os_dados_dele(admin, novo_cliente, db):
@@ -53,19 +54,22 @@ def test_coordenacao_abre_o_painel_so_se_liberado():
         entrar(c, "coord@exemplo.com.br")
         assert c.get("/api/eu").json()["painel"] is True
         assert c.get("/api/admin/pessoas").status_code == 200
-        r = c.post("/api/admin/links", json={"tipo": "admin"})
+        r = c.post("/api/admin/pessoas", json={"nome": "Admin Tres", "tipo": "admin", "cpf": cpf_inventado(150)})
         assert r.status_code == 400 and "Só o administrador" in r.json()["erro"]
         r = c.patch(f"/api/admin/pessoas/{alvo_id}", json={"situacao": "bloqueado"})
         assert r.status_code == 400 and "Só o administrador" in r.json()["erro"]
-        link_admin = criar_link(adm, "admin")
-        assert c.patch(f"/api/admin/links/{link_admin['id']}", json={"ativo": False}).status_code == 403
+
+
+_CPFS = iter(range(200, 400))
 
 
 def _pendente(admin, novo_cliente, tipo="especialista", email="novo@exemplo.com.br"):
-    link = criar_link(admin, tipo)
+    """Um cadastro pendente que já fez o primeiro acesso (CPF + Google) e espera a aprovação."""
+    cpf = cpf_inventado(next(_CPFS))
+    p = pre_cadastro(admin, nome="Especialista Novo Inventado", tipo=tipo, cpf=cpf)
+    assert admin.patch(f"/api/admin/pessoas/{p['id']}", json={"situacao": "pendente"}).status_code == 200
     c = novo_cliente()
-    entrar(c, email, link=link["codigo"])
-    assert c.post(f"/api/cadastro/{link['codigo']}", json={"nome": "Especialista Novo Inventado"}).status_code == 200
+    primeiro_acesso(c, cpf, email)
     pessoas = admin.get("/api/admin/pessoas", params={"situacao": "pendente"}).json()["pessoas"]
     return next(p for p in pessoas if p["email"] == email), c
 
@@ -128,6 +132,10 @@ def test_editar_valida_os_campos(admin, db):
     assert admin.patch(url, json={"situacao": "sumido"}).status_code == 400
     assert admin.patch(url, json={"nome": "x"}).status_code == 400
     assert admin.patch("/api/admin/pessoas/9999", json={"nome": "Ninguem Aqui"}).status_code == 404
+    esp = criar_pessoa(db, nome="Especialista Incompleto", email="inc@exemplo.com.br", tipo="especialista")
+    r2 = admin.patch(f"/api/admin/pessoas/{esp.id}", json={"nome": "Especialista Ainda Incompleto"})
+    assert r2.status_code == 200  # editar quem já é ativo não exige equipe/SGA/líder (isso só vale para aprovar)
+    assert r2.json()["pessoa"]["faltando"] == ["equipe", "nome no SGA", "líder"]
     r = admin.patch(url, json={"equipe": "Águias", "nome": "Cadastro Renomeado"})
     assert r.json()["pessoa"]["equipe"] == "Águias" and r.json()["pessoa"]["nome"] == "Cadastro Renomeado"
 

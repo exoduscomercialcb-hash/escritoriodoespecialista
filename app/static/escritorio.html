@@ -44,31 +44,47 @@
     <section id="adminView" hidden aria-label="Painel do administrador">
       <div class="seg adm-tabs" role="group" aria-label="Partes do painel">
         <button type="button" data-adm="cad" aria-pressed="true">Cadastros</button>
-        <button type="button" data-adm="lnk" aria-pressed="false">Links de cadastro</button>
         <button type="button" data-adm="acs" aria-pressed="false">Acessos</button>
       </div>
 
       <div id="admCad">
+        <details class="adm-box" id="boxNovo">
+          <summary>+ Novo cadastro</summary>
+          <form class="box-in pc-form" id="novoForm">
+            <label>Nome completo<input class="field" id="novoNome" required maxlength="120"></label>
+            <label>Tipo de conta<select class="field" id="novoTipo" required></select></label>
+            <label>CPF<input class="field" id="novoCpf" required inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label>
+            <label>Equipe<select class="field" id="novoEquipe"></select></label>
+            <label>Nome no SGA <small>(opcional)</small><input class="field" id="novoSga" maxlength="160"></label>
+            <label id="novoLiderCampo">Líder<select class="field" id="novoLider"></select></label>
+            <label>WhatsApp <small>(opcional)</small><input class="field" id="novoWhats" type="tel" maxlength="20" placeholder="(21) 98765-4321"></label>
+            <div class="row"><button class="primary" type="submit">Cadastrar</button><p class="err" id="novoErro" hidden></p></div>
+          </form>
+        </details>
+        <details class="adm-box" id="boxImportar">
+          <summary>Importar planilha</summary>
+          <div class="box-in">
+            <p class="legend">No Excel, selecione a planilha inteira (com a linha dos títulos), copie (Ctrl + C) e cole aqui (Ctrl + V). Colunas: <b>Nome</b>, <b>Tipo de conta</b> e <b>CPF</b>; se tiver, também <b>Equipe</b>, <b>Nome no SGA</b>, <b>Líder</b> e <b>WhatsApp</b>. Quem já tem cadastro (mesmo CPF) é atualizado.</p>
+            <textarea class="field" id="impTexto" spellcheck="false" aria-label="Planilha colada"></textarea>
+            <div class="row">
+              <button class="primary" type="button" id="impEnviar">Importar</button>
+              <label class="btn">Abrir arquivo .csv<input type="file" id="impArquivo" accept=".csv,text/csv,text/plain" hidden></label>
+              <a class="btn" href="/api/admin/modelo-planilha.csv">Baixar modelo</a>
+            </div>
+            <div id="impResultado" role="status"></div>
+          </div>
+        </details>
         <div class="adm-tools">
           <div class="seg" role="group" aria-label="Situação do cadastro" id="cadFiltro">
-            <button type="button" data-sit="pendente" aria-pressed="true">Pendentes</button>
+            <button type="button" data-sit="" aria-pressed="true">Todos</button>
+            <button type="button" data-sit="aguardando" aria-pressed="false">Aguardando 1º acesso</button>
             <button type="button" data-sit="ativo" aria-pressed="false">Ativos</button>
+            <button type="button" data-sit="pendente" aria-pressed="false">Pendentes</button>
             <button type="button" data-sit="bloqueado" aria-pressed="false">Bloqueados</button>
-            <button type="button" data-sit="" aria-pressed="false">Todos</button>
           </div>
-          <input class="field" id="cadBusca" type="search" placeholder="Buscar nome, e-mail, equipe ou nome no SGA" aria-label="Buscar cadastro">
+          <input class="field" id="cadBusca" type="search" placeholder="Buscar nome, CPF, e-mail, equipe ou nome no SGA" aria-label="Buscar cadastro">
         </div>
         <div class="adm-list" id="cadLista"></div>
-      </div>
-
-      <div id="admLnk" hidden>
-        <form class="adm-tools" id="lnkForm">
-          <label>Tipo de acesso<select class="field" id="lnkTipo" required></select></label>
-          <label>Válido até (opcional)<input class="field" id="lnkValidade" type="date"></label>
-          <button class="primary" type="submit">Gerar link</button>
-        </form>
-        <p class="legend">Cada link cadastra pessoas de um tipo de acesso. Quem abrir o link entra com o Google, escreve o nome e fica pendente até você aprovar.</p>
-        <div class="tscroll"><table class="vtab" id="lnkTabela"></table></div>
       </div>
 
       <div id="admAcs" hidden>
