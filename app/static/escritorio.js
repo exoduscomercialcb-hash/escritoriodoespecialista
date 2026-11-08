@@ -343,12 +343,6 @@
         h('td', { class: 'r' }, x.entradas), h('td', { class: 'nw' }, x.ultimo_txt), h('td', { class: 'nw' }, x.primeiro_txt),
         h('td', {}, h('div', { class: 'abas' }, ...Object.entries(x.abas).map(([a, n]) => h('span', { class: 'chip' }, nomeAba(a) + ' · ' + n))))))
         : [h('tr', {}, h('td', { colspan: 6, class: 'empty' }, 'Nenhum acesso no período.'))])));
-    $('acsEventos').replaceChildren(
-      h('thead', {}, h('tr', {}, ...['Data e hora', 'Pessoa', 'Equipe', 'O que fez', 'IP (resumido)'].map(t => h('th', {}, t)))),
-      h('tbody', {}, ...(r.eventos.length ? r.eventos.map(x => h('tr', {},
-        h('td', { class: 'nw' }, x.data_hora_txt), h('td', {}, x.nome), h('td', { class: 'nw' }, x.equipe || '—'),
-        h('td', {}, nomeAba(x.aba)), h('td', { class: 'nw' }, x.ip || '—')))
-        : [h('tr', {}, h('td', { colspan: 5, class: 'empty' }, 'Nenhum acesso no período.'))])));
   }
 
   /* ------------------------------------------------------------ início */

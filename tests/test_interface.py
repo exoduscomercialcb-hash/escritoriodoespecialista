@@ -180,7 +180,7 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     adm.click('[data-adm="acs"]')
     linha = adm.locator("#acsResumo tbody tr", has_text="Especialista Novo Inventado")
     expect(linha.locator("td.r")).to_have_text("1")
-    expect(adm.locator("#acsEventos")).to_contain_text("Painel: Cadastros")
+    assert adm.locator("#acsEventos").count() == 0  # só o registro "Quem entrou" (pedido de 08/11)
     adm.select_option("#acsEquipe", "Elite")
     adm.click("#acsForm button[type=submit]")
     expect(adm.locator("#acsResumo tbody tr")).to_have_count(1)
