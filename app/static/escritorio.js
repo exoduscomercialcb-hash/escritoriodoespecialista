@@ -82,6 +82,7 @@
   }
 
   function telaSemCadastro(eu) {
+    if (eu.dica) return telaNaoLiberado(eu);
     telaLogin(
       h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email)),
       h('p', { class: 'hint', id: 'semCadastro' }, 'É o seu primeiro acesso. Informe o seu CPF e o seu WhatsApp para liberar o escritório nesta conta Google.'),
@@ -92,7 +93,7 @@
   function telaNaoLiberado(eu, extra) {
     telaLogin(
       extra ? h('p', { class: 'ok-msg' }, extra) : null,
-      h('p', { class: 'err', id: 'naoLiberado' }, eu.mensagem || 'Seu acesso ainda não foi liberado. Fale com a coordenação.'),
+      eu.dica ? h('p', { class: 'ok-msg', id: 'dicaConta' }, eu.dica) : h('p', { class: 'err', id: 'naoLiberado' }, eu.mensagem || 'Seu acesso ainda não foi liberado. Fale com a coordenação.'),
       eu.email ? h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email)) : null,
       h('a', { class: 'btn sec', id: 'outraConta', href: '/auth/sair' }, 'Entrar com outra conta'));
   }

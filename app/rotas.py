@@ -98,8 +98,12 @@ def eu(request: Request, db: Session = Depends(banco), p: Pessoa | None = Depend
     if existente is not None and existente.situacao == "ativo":  # aprovado depois que entrou: só entrar de novo
         return {"estado": "anonimo", "google_configurado": cfg.google_configurado,
                 "aviso": "Seu acesso foi liberado. Entre com o Google."}
-    return {"estado": existente.situacao if existente else "sem_cadastro", "email": google["email"],
-            "nome": google.get("nome"), "mensagem": MSG_NAO_LIBERADO}
+    resposta = {"estado": existente.situacao if existente else "sem_cadastro", "email": google["email"],
+                "nome": google.get("nome"), "mensagem": MSG_NAO_LIBERADO}
+    if google.get("conta_do_cpf"):
+        resposta["dica"] = (f"O CPF que você informou entra com a conta Google {google['conta_do_cpf']}. "
+                            "Clique em Entrar com outra conta e use essa.")
+    return resposta
 
 
 @rotas.post("/api/primeiro-acesso", dependencies=[Depends(exige_json)])

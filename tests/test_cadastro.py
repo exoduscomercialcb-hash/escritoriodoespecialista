@@ -139,3 +139,18 @@ def test_quem_ja_tem_conta_entra_direto(admin, novo_cliente, db):
 def test_nao_existe_mais_link_de_cadastro(admin, novo_cliente):
     assert admin.get("/api/admin/links").status_code == 404
     assert novo_cliente().get("/cadastro/qualquer").status_code == 404
+
+
+def test_cpf_de_outra_conta_mostra_qual_conta_usar(admin, novo_cliente, db):
+    """Caso de 08/11: o Rafael informou o CPF de master e entrou com a outra conta Google dele."""
+    pre_cadastro(admin, nome="Pessoa Duas Contas", tipo="cadastro", cpf=cpf_inventado(15))
+    primeiro_acesso(novo_cliente(), cpf_inventado(15), "contaprincipal@exemplo.com.br")
+    criar_pessoa(db, nome="Cadastro Antigo", email="contapessoal@exemplo.com.br", tipo="lider", situacao="pendente")
+    c = novo_cliente()
+    _post(c, cpf_inventado(15))
+    entrar(c, "contapessoal@exemplo.com.br")
+    eu = c.get("/api/eu").json()
+    assert eu["estado"] == "pendente"
+    assert eu["dica"] == ("O CPF que você informou entra com a conta Google con•••@exemplo.com.br. "
+                          "Clique em Entrar com outra conta e use essa.")
+    assert "contaprincipal" not in str(eu)

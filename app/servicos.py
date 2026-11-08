@@ -166,6 +166,10 @@ def concluir_login(db: Session, sessao: dict, cfg: Config, *, email: str, sub: s
         raise ErroRegra("O Google não informou o e-mail.")
     pre = sessao.get("pre")
     p = achar_pessoa(db, email, sub)
+    # Informou um CPF que já entra com outra conta Google: a tela diz qual (com parte do e-mail escondida).
+    alvo_do_cpf = db.get(Pessoa, pre.get("id") or 0) if pre else None
+    conta_do_cpf = (mascarar_email(alvo_do_cpf.email)
+                    if alvo_do_cpf is not None and alvo_do_cpf.email and alvo_do_cpf.email != email else None)
     if p is None and pre:
         p = vincular_pre_cadastro(db, pre, email, sub)
     elif p is not None and pre and pre.get("id") == p.id and pre.get("whatsapp"):
@@ -185,7 +189,16 @@ def concluir_login(db: Session, sessao: dict, cfg: Config, *, email: str, sub: s
         if p.email != email:
             p.email = email
 
-    return abrir_sessao(db, sessao, p, ip, email=email, sub=sub, nome=nome)
+    destino = abrir_sessao(db, sessao, p, ip, email=email, sub=sub, nome=nome)
+    if conta_do_cpf and "google" in sessao:
+        sessao["google"] = {**sessao["google"], "conta_do_cpf": conta_do_cpf}
+    return destino
+
+
+def mascarar_email(email: str) -> str:
+    """'exoduscomercialcb@gmail.com' -> 'exo•••@gmail.com'."""
+    nome, _, dominio = email.partition("@")
+    return nome[:3] + "•••@" + dominio
 
 
 def abrir_sessao(db: Session, sessao: dict, p: Pessoa | None, ip: str | None, *, email: str, sub: str | None,
