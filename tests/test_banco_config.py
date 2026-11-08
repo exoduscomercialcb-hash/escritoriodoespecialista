@@ -102,12 +102,13 @@ def test_migracao_acrescenta_colunas_na_tabela_antiga(tmp_path):
         conn.execute(text("CREATE TABLE pessoas (id INTEGER PRIMARY KEY, nome VARCHAR(120), email VARCHAR(254), "
                           "google_sub VARCHAR(64), tipo VARCHAR(30), equipe VARCHAR(40), nome_sga VARCHAR(160), "
                           "lider_id INTEGER, situacao VARCHAR(12), link_id INTEGER, criado_em DATETIME, "
-                          "aprovado_em DATETIME, aprovado_por VARCHAR(254))"))
+                          "aprovado_em DATETIME, aprovado_por VARCHAR(254), matricula_sga VARCHAR(20))"))
         conn.execute(text("INSERT INTO pessoas (nome, tipo, situacao) VALUES ('Pessoa Antiga Inventada', 'admin', 'ativo')"))
     iniciar_banco(engine)
     iniciar_banco(engine)  # de novo, sem erro
     colunas = {c["name"] for c in inspect(engine).get_columns("pessoas")}
     assert {"cpf", "whatsapp", "vinculado_em"} <= colunas
+    assert "matricula_sga" not in colunas and "nome_sga" not in colunas  # saíram do sistema (08/11)
     assert any(i["name"] == "ix_pessoas_cpf" and i["unique"] for i in inspect(engine).get_indexes("pessoas"))
     with engine.connect() as conn:
         assert conn.execute(text("SELECT nome FROM pessoas")).scalar() == "Pessoa Antiga Inventada"

@@ -194,9 +194,9 @@
     try { r = await api('/api/admin/pessoas?' + q); } catch (e) { toast(e.message); return; }
     $('cadTotal').textContent = r.pessoas.length + (r.pessoas.length === 1 ? ' cadastro' : ' cadastros');
     $('cadTabela').replaceChildren(
-      h('thead', {}, h('tr', {}, ...['Nome', 'Tipo', 'Equipe(s)', 'Líder', 'Matrícula SGA', 'CPF', 'WhatsApp', 'E-mail Google', 'Situação', ''].map(t => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ...['Nome', 'CPF', 'Telefone (WhatsApp)', 'E-mail Google', 'Tipo', 'Equipe(s)', 'Líder', 'Situação', ''].map(t => h('th', {}, t)))),
       h('tbody', {}, ...(r.pessoas.length ? r.pessoas.flatMap(linhasPessoa)
-        : [h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'Nenhum cadastro encontrado.'))])));
+        : [h('tr', {}, h('td', { colspan: 9, class: 'empty' }, 'Nenhum cadastro encontrado.'))])));
     prepararNovo();
   }
 
@@ -204,17 +204,16 @@
     const eu = p.id === EU.pessoa.id;
     const [chipCls, chipTxt] = SIT_CHIP[p.situacao] || ['chip', p.situacao];
     const aguardando = p.aguardando_primeiro_acesso && p.situacao !== 'bloqueado';
-    const editor = h('tr', { class: 'editor', hidden: true }, h('td', { colspan: 10 }, editorPessoa(p)));
+    const editor = h('tr', { class: 'editor', hidden: true }, h('td', { colspan: 9 }, editorPessoa(p)));
     const botao = h('button', { type: 'button', class: 'btn', 'data-acao': 'editar', onclick: () => { editor.hidden = !editor.hidden; botao.textContent = editor.hidden ? 'Editar' : 'Fechar'; } }, 'Editar');
     const linha = h('tr', { class: 'pessoa ' + p.situacao, 'data-pessoa': p.id },
       h('td', {}, h('b', {}, p.nome), eu ? h('small', { class: 'sub' }, 'Você') : null),
+      h('td', { class: 'nw' }, p.cpf || vazio('—')),
+      h('td', { class: 'nw' }, p.whatsapp || vazio('no 1º acesso')),
+      h('td', {}, p.email || vazio('no 1º acesso')),
       h('td', { class: 'nw' }, p.tipo_nome),
       h('td', {}, p.equipe || vazio('—')),
       h('td', {}, p.lider_nome || (p.tipo === 'especialista' ? vazio('sem líder') : '—')),
-      h('td', { class: 'nw' }, p.matricula_sga || vazio('—')),
-      h('td', { class: 'nw' }, p.cpf || vazio('—')),
-      h('td', { class: 'nw' }, p.whatsapp || vazio('1º acesso')),
-      h('td', {}, p.email || vazio('1º acesso')),
       h('td', {}, h('div', { class: 'chips' },
         aguardando ? h('span', { class: 'chip aguarda' }, 'Aguardando 1º acesso') : h('span', { class: chipCls }, chipTxt),
         p.faltando.length ? h('span', { class: 'chip alert', title: 'Falta: ' + p.faltando.join(', ') }, 'Falta: ' + p.faltando.join(', ')) : null),
@@ -239,12 +238,13 @@
   $('novoForm').addEventListener('submit', async ev => {
     ev.preventDefault(); $('novoErro').hidden = true;
     const corpo = { nome: $('novoNome').value, tipo: $('novoTipo').value, cpf: $('novoCpf').value, equipe: $('novoEquipes').valor().join(', ') || null,
-      nome_sga: $('novoSga').value || null, matricula_sga: $('novoMatricula').value || null, whatsapp: $('novoWhats').value || null,
+      whatsapp: $('novoWhats').value || null,
+      email: $('novoEmail').value || null,
       lider_id: $('novoTipo').value === 'especialista' && $('novoLider').value ? Number($('novoLider').value) : null };
     try {
       await api('/api/admin/pessoas', { corpo });
       toast('Cadastro feito. No primeiro acesso, a pessoa informa o CPF e entra com o Google.');
-      for (const id of ['novoNome', 'novoCpf', 'novoSga', 'novoMatricula', 'novoWhats']) $(id).value = '';
+      for (const id of ['novoNome', 'novoCpf', 'novoWhats', 'novoEmail']) $(id).value = '';
       $('novoEquipes').querySelectorAll('input').forEach(i => { i.checked = false; });
       OP = await api('/api/admin/opcoes'); carregarCadastros();
     } catch (e) { $('novoErro').textContent = e.message; $('novoErro').hidden = false; }
@@ -278,25 +278,23 @@
       nome: h('input', { class: 'field', value: p.nome, maxlength: 120 }),
       tipo: h('select', { class: 'field', disabled: eu }, ...opcoesSelect(OP.tipos, p.tipo)),
       equipes: caixasEquipes(p.equipes),
-      matricula_sga: h('input', { class: 'field', value: p.matricula_sga || '', maxlength: 20 }),
-      nome_sga: h('input', { class: 'field', value: p.nome_sga || '', maxlength: 160, placeholder: 'EX.: JOAO DA SILVA' }),
       lider_id: h('select', { class: 'field' }, ...opcoesLider(p.lider_id, p.id)),
       cpf: h('input', { class: 'field', value: p.cpf || '', inputmode: 'numeric', maxlength: 14 }),
       whatsapp: h('input', { class: 'field', value: p.whatsapp || '', type: 'tel', maxlength: 20 }),
+      email: h('input', { class: 'field', value: p.email || '', type: 'email', maxlength: 254, disabled: eu }),
     };
     const campoLider = h('label', {}, 'Líder', f.lider_id);
     const ajustaLider = () => { campoLider.hidden = f.tipo.value !== 'especialista'; };
     f.tipo.addEventListener('change', ajustaLider); ajustaLider();
     const form = h('div', { class: 'pc-form' },
       h('label', {}, 'Nome', f.nome), h('label', {}, 'Tipo de conta', f.tipo),
-      h('label', {}, 'Matrícula SGA', f.matricula_sga),
-      h('label', {}, 'Nome no SGA ', h('small', {}, '(exatamente como está no SGA)'), f.nome_sga), campoLider,
-      h('label', {}, 'CPF', f.cpf), h('label', {}, 'WhatsApp', f.whatsapp),
+      campoLider,
+      h('label', {}, 'CPF', f.cpf), h('label', {}, 'Telefone (WhatsApp)', f.whatsapp),
+      h('label', {}, 'E-mail Google ', h('small', {}, '(a pessoa só entra com este e-mail)'), f.email),
       h('fieldset', { class: 'equipes-campo' }, h('legend', {}, 'Equipe(s)'), f.equipes));
     const erro = h('p', { class: 'err', hidden: true });
     const valores = () => ({ nome: f.nome.value, tipo: f.tipo.value, equipe: f.equipes.valor().join(', ') || null,
-      nome_sga: f.nome_sga.value || null, matricula_sga: f.matricula_sga.value || null,
-      cpf: f.cpf.value || null, whatsapp: f.whatsapp.value || null,
+      cpf: f.cpf.value || null, whatsapp: f.whatsapp.value || null, ...(eu ? {} : { email: f.email.value || null }),
       lider_id: f.tipo.value === 'especialista' && f.lider_id.value ? Number(f.lider_id.value) : null });
 
     async function salvar(btn, corpo, msg) {

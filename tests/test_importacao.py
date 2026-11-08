@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db import Pessoa
 
-from .conftest import ADMIN, cpf_inventado, criar_pessoa, entrar, pre_cadastro
+from .conftest import ADMIN, cpf_inventado, criar_pessoa, entrar, pre_cadastro, primeiro_acesso
 
 TITULOS = "Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\tWhatsApp"
 
@@ -27,7 +27,7 @@ def test_importa_lideres_e_liderados_colados_do_excel(admin, db):
     pessoas = {p.nome: p for p in db.scalars(select(Pessoa).where(Pessoa.cpf.is_not(None)))}
     lider, esp = pessoas["Lider Inventado"], pessoas["Especialista Um Inventado"]
     assert (lider.tipo, lider.equipe, lider.whatsapp, lider.situacao) == ("lider", "Pé no Chão", "21987650000", "ativo")
-    assert (esp.tipo, esp.nome_sga, esp.lider_id, esp.email) == ("especialista", "ESPECIALISTA UM INVENTADO", lider.id, None)
+    assert (esp.tipo, esp.lider_id, esp.email) == ("especialista", lider.id, None)  # "Nome no SGA" é ignorado
     assert pessoas["Financeiro Inventado"].tipo == "financeiro"
 
 
@@ -67,7 +67,7 @@ def test_planilha_csv_com_ponto_e_virgula_e_colunas_minimas(admin, db):
 def test_modelo_da_planilha(admin):
     r = admin.get("/api/admin/modelo-planilha.csv")
     assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
-    assert r.text.lstrip("﻿").startswith("Nome;Tipo de conta;CPF;Equipe;Matrícula SGA;Nome no SGA;Líder;WhatsApp")
+    assert r.text.lstrip("﻿").startswith("Nome;Tipo de conta;CPF;Equipe;Líder;WhatsApp;E-mail")
 
 
 def test_novo_cadastro_pelo_painel(admin, db):
@@ -76,7 +76,7 @@ def test_novo_cadastro_pelo_painel(admin, db):
     assert (p["cpf"], p["whatsapp"], p["equipe"]) == (
         "{}.{}.{}-{}".format(cpf_inventado(60)[:3], cpf_inventado(60)[3:6], cpf_inventado(60)[6:9], cpf_inventado(60)[9:]),
         "(11) 3456-7890", "Exodus Benefícios")
-    assert p["faltando"] == ["nome ou matrícula no SGA"]
+    assert p["faltando"] == []
     r = admin.post("/api/admin/pessoas", json={"nome": "Outra Pessoa", "tipo": "cadastro", "cpf": cpf_inventado(60)})
     assert r.status_code == 400 and "Já existe um cadastro com esse CPF" in r.json()["erro"]
     r = admin.post("/api/admin/pessoas", json={"nome": "Outra Pessoa", "tipo": "cadastro", "cpf": "000"})
@@ -109,7 +109,7 @@ def test_editar_cpf_e_whatsapp(admin, db):
 
 def test_planilha_no_formato_do_sistema_atual(admin, db):
     """Mesmo formato da planilha de acessos de hoje (dados inventados): Usuário, TIPO DE CONTA, Nome, Equipe(s),
-    CPF, Matrícula SGA; tipos "liderado", "líder", "INSIDE SALES", "SENHA MASTER" e "SENHA FINANCEIRO"."""
+    CPF, Matrícula SGA (ignorada); tipos "liderado", "líder", "INSIDE SALES", "SENHA MASTER" e "SENHA FINANCEIRO"."""
     titulos = "Usuário\tTIPO DE CONTA\tNome\tEquipe(s)\tCPF\tMatrícula SGA"
     texto = planilha(
         f"VENDEDORA UM\tINSIDE SALES\tVendedora Um Inventada\tEXODUS BENEFICIOS\t{cpf_inventado(101)}\t501",
@@ -131,7 +131,7 @@ def test_planilha_no_formato_do_sistema_atual(admin, db):
     assert por_nome["Vendedora Um Inventada"].tipo == "vendedora_interna"
     assert por_nome["Financeiro Inventado"].tipo == "financeiro"
     lua, duas, casa = (por_nome[n] for n in ("Liderado Lua Inventado", "Liderado Duas Equipes", "Liderado Sem Lider"))
-    assert (lua.tipo, lua.matricula_sga, lua.lider_id) == ("especialista", "505", por_nome["Lider Lua Inventado"].id)
+    assert (lua.tipo, lua.lider_id) == ("especialista", por_nome["Lider Lua Inventado"].id)  # matrícula ignorada
     assert (duas.equipe, duas.lider_id) == ("Elite, Lua", None)  # dois líderes possíveis: fica para escolher
     assert (casa.equipe, casa.lider_id) == ("Exodus Benefícios, Recreio, Águias", None)
     assert len([p for p in por_nome.values() if p.tipo == "admin"]) == 1
@@ -141,11 +141,80 @@ def test_planilha_no_formato_do_sistema_atual(admin, db):
     assert "Liderado Duas Equipes" in nomes("elite") and "Liderado Duas Equipes" in nomes("lua")
 
 
-def test_equipes_e_matricula_no_painel(admin, db):
-    p = pre_cadastro(admin, nome="Especialista Inventado", cpf=cpf_inventado(110), equipe="lua, Elite",
-                     matricula_sga="777")
-    assert (p["equipe"], p["equipes"], p["matricula_sga"]) == ("Lua, Elite", ["Lua", "Elite"], "777")
-    assert p["faltando"] == ["líder"]  # a matrícula vale no lugar do nome no SGA
-    r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"equipe": "Águias, Águias", "matricula_sga": ""})
-    assert r.json()["pessoa"]["equipe"] == "Águias" and r.json()["pessoa"]["matricula_sga"] is None
+def test_varias_equipes_no_painel(admin, db):
+    p = pre_cadastro(admin, nome="Especialista Inventado", cpf=cpf_inventado(110), equipe="lua, Elite")
+    assert (p["equipe"], p["equipes"]) == ("Lua, Elite", ["Lua", "Elite"])
+    assert "matricula_sga" not in p and "nome_sga" not in p
+    r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"equipe": "Águias, Águias"})
+    assert r.json()["pessoa"]["equipe"] == "Águias"
     assert "desconhecida" in admin.patch(f"/api/admin/pessoas/{p['id']}", json={"equipe": "Lua, Marte"}).json()["erro"]
+
+
+def test_email_cadastrado_pela_coordenacao(admin, novo_cliente, db):
+    """Os novos já entram com o e-mail certo: a pessoa só consegue entrar com ele."""
+    p = pre_cadastro(admin, nome="Novo Com Email", tipo="cadastro", cpf=cpf_inventado(120), email="Novo.Email@Exemplo.com.br")
+    assert p["email"] == "novo.email@exemplo.com.br" and p["aguardando_primeiro_acesso"] is True
+    r = admin.post("/api/admin/pessoas", json={"nome": "Outro", "tipo": "cadastro", "cpf": cpf_inventado(121),
+                                               "email": "novo.email@exemplo.com.br"})
+    assert r.status_code == 400 and "esse e-mail" in r.json()["erro"]
+    assert "E-mail inválido" in admin.post("/api/admin/pessoas", json={
+        "nome": "Outro", "tipo": "cadastro", "cpf": cpf_inventado(121), "email": "sem-arroba"}).json()["erro"]
+
+    # entra pela tela (CPF + WhatsApp + Google) com o e-mail cadastrado: libera e grava o telefone
+    c = novo_cliente()
+    c.post("/api/primeiro-acesso", json={"cpf": cpf_inventado(120), "whatsapp": "21 98888-7777"})
+    assert entrar(c, "novo.email@exemplo.com.br").headers["location"] == "/"
+    eu = c.get("/api/eu").json()["pessoa"]
+    assert eu["whatsapp"] == "(21) 98888-7777" and eu["aguardando_primeiro_acesso"] is False and eu["vinculado_em_txt"]
+
+    # com outra conta Google, não entra
+    c2 = novo_cliente()
+    c2.post("/api/primeiro-acesso", json={"cpf": cpf_inventado(120), "whatsapp": "21 98888-7777"})
+    entrar(c2, "outra@exemplo.com.br")
+    assert c2.get("/api/eu").json()["estado"] == "sem_cadastro"
+    r = c2.post("/api/primeiro-acesso", json={"cpf": cpf_inventado(120), "whatsapp": "21 98888-7777"})
+    assert r.status_code == 400 and "outra conta Google" in r.json()["erro"]
+
+
+def test_trocar_o_email_desliga_a_conta_antiga(admin, novo_cliente, db):
+    p = pre_cadastro(admin, nome="Troca De Conta", tipo="cadastro", cpf=cpf_inventado(130))
+
+    primeiro_acesso(novo_cliente(), cpf_inventado(130), "antiga@exemplo.com.br")
+    r = admin.patch(f"/api/admin/pessoas/{p['id']}", json={"email": "nova@exemplo.com.br"})
+    assert r.json()["pessoa"]["email"] == "nova@exemplo.com.br" and r.json()["pessoa"]["aguardando_primeiro_acesso"]
+    velha = novo_cliente()
+    entrar(velha, "antiga@exemplo.com.br")
+    assert velha.get("/api/eu").json()["estado"] == "sem_cadastro"  # nem pelo e-mail, nem pela conta Google antiga
+    nova = novo_cliente()
+    entrar(nova, "nova@exemplo.com.br")
+    assert nova.get("/api/eu").json()["estado"] == "ativo"
+    eu = admin.get("/api/eu").json()["pessoa"]
+    r = admin.patch(f"/api/admin/pessoas/{eu['id']}", json={"email": "outro.admin@exemplo.com.br"})
+    assert r.status_code == 400 and "não pode ser trocado" in r.json()["erro"]
+
+
+def test_planilha_com_coluna_de_email(admin, db):
+    texto = planilha(f"Pessoa Com Email\tCadastro\t{cpf_inventado(140)}\t\t\t\t\tpessoa@exemplo.com.br",
+                     titulos="Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\tWhatsApp\tE-mail")
+    assert admin.post("/api/admin/importar", json={"texto": texto}).json()["criados"] == 1
+    assert db.scalars(select(Pessoa).where(Pessoa.cpf == cpf_inventado(140))).one().email == "pessoa@exemplo.com.br"
+    outro = planilha(f"Outra Pessoa\tCadastro\t{cpf_inventado(141)}\t\t\t\t\tpessoa@exemplo.com.br",
+                     titulos="Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\tWhatsApp\tE-mail")
+    r = admin.post("/api/admin/importar", json={"texto": outro}).json()
+    assert r["importado"] is False and "outro cadastro" in r["erros"][0]["mensagem"]
+
+
+def test_baixar_planilha_de_cadastros(admin, novo_cliente, db):
+    pre_cadastro(admin, nome="=Formula Inventada", tipo="cadastro", cpf=cpf_inventado(150), whatsapp="21987654321")
+    r = admin.get("/api/admin/cadastros.csv")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    linhas = r.text.lstrip("﻿").splitlines()
+    assert linhas[0] == ("Nome;CPF;Telefone (WhatsApp);E-mail Google;Tipo de conta;Equipe(s);Líder;"
+                         "Situação;1º acesso")
+    linha = next(x for x in linhas if "Formula Inventada" in x)
+    assert linha.startswith("'=Formula Inventada;")  # não vira fórmula no Excel
+    assert "(21) 98765-4321" in linha and "aguardando 1º acesso" in linha
+    c = novo_cliente()
+    criar_pessoa(db, nome="Sem Painel", email="sem@exemplo.com.br", tipo="cadastro")
+    entrar(c, "sem@exemplo.com.br")
+    assert c.get("/api/admin/cadastros.csv").status_code == 403

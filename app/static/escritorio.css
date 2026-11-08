@@ -210,3 +210,10 @@ form.pa { display: grid; gap: 12px; }
 .adm-link { text-align: center; font-size: 12px; margin-top: 4px; }
 .adm-link a { color: var(--muted); }
 .primary[disabled] { opacity: .45; cursor: not-allowed; }
+.cad-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.cad-topo .legend { margin: 0; font-weight: 600; }
+.tscroll:has(.vtab.cad) { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.vtab.cad thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-2); color: var(--fg); font-size: 12px; border-bottom: 2px solid var(--line); padding: 10px; }
+.vtab.cad tbody tr.pessoa:nth-child(4n+1) td { background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
+.vtab.cad { min-width: 980px; }
+.vtab.cad td:first-child { min-width: 170px; }

@@ -37,12 +37,6 @@ def limpar_nome(valor: str | None) -> str:
     return nome
 
 
-def limpar_nome_sga(valor: str | None) -> str | None:
-    """Nome exatamente como está no SGA, em maiúsculas. É por ele que o especialista é ligado aos dados."""
-    nome = limpar_espacos(valor).upper()
-    return nome or None
-
-
 def chave(texto: str | None) -> str:
     """'Pé no Chão' -> 'pe no chao': compara sem acento, sem maiúscula e sem pontuação."""
     sem_acento = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode()
@@ -71,13 +65,16 @@ def lista_de_equipes(texto: str | None) -> list[str]:
     return [e.strip() for e in (texto or "").split(",") if e.strip()]
 
 
-def limpar_matricula(valor) -> str | None:
-    texto = limpar_espacos(str(valor) if valor is not None else "")
-    if texto.endswith(".0") and texto[:-2].isdigit():  # Excel às vezes guarda número como 123.0
-        texto = texto[:-2]
-    if len(texto) > 20:
-        raise ErroRegra("Matrícula do SGA muito longa.")
-    return texto or None
+EMAIL_VALIDO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def limpar_email(valor: str | None) -> str | None:
+    email = (valor or "").strip().lower()
+    if not email:
+        return None
+    if not EMAIL_VALIDO.match(email) or len(email) > 254:
+        raise ErroRegra("E-mail inválido.")
+    return email
 
 
 def so_numeros(valor: str | None) -> str:
@@ -143,12 +140,11 @@ def pode_ver_painel(p: Pessoa | None, cfg: Config) -> bool:
 def pessoa_para_json(p: Pessoa) -> dict:
     return {
         "id": p.id, "nome": p.nome, "email": p.email, "tipo": p.tipo, "tipo_nome": TIPOS.get(p.tipo, p.tipo),
-        "equipe": p.equipe, "equipes": lista_de_equipes(p.equipe), "nome_sga": p.nome_sga,
-        "matricula_sga": p.matricula_sga, "lider_id": p.lider_id,
+        "equipe": p.equipe, "equipes": lista_de_equipes(p.equipe), "lider_id": p.lider_id,
         "lider_nome": p.lider.nome if p.lider else None, "situacao": p.situacao,
         "cpf": formatar_cpf(p.cpf), "whatsapp": formatar_whatsapp(p.whatsapp),
-        "aguardando_primeiro_acesso": p.email is None,
-        "faltando": requisitos_para_aprovar(p.tipo, p.equipe, p.nome_sga or p.matricula_sga, p.lider_id),
+        "aguardando_primeiro_acesso": p.vinculado_em is None,
+        "faltando": requisitos_para_aprovar(p.tipo, p.equipe, p.lider_id),
         "criado_em": iso(p.criado_em), "criado_em_txt": formatar(p.criado_em),
         "aprovado_em_txt": formatar(p.aprovado_em), "aprovado_por": p.aprovado_por,
         "vinculado_em_txt": formatar(p.vinculado_em),
@@ -197,6 +193,8 @@ def abrir_sessao(db: Session, sessao: dict, p: Pessoa | None, ip: str | None, *,
     """Ativo: entra e registra a entrada. Senão, guarda só quem o Google confirmou (para o primeiro acesso)."""
     sessao.clear()
     if p is not None and p.situacao == "ativo":
+        if p.vinculado_em is None:  # e-mail cadastrado pela coordenação: o 1º acesso é esta entrada
+            p.vinculado_em = agora()
         db.flush()
         sessao["pid"] = p.id
         db.add(Acesso(pessoa_id=p.id, aba="entrada", ip=ip_resumido(ip)))
@@ -237,9 +235,12 @@ def primeiro_acesso(db: Session, sessao: dict, cpf: str, whatsapp: str, ip: str 
         raise ErroRegra(MSG_NAO_LIBERADO)
     google = sessao.get("google")
     if google and google.get("email"):
-        if p.email is not None:
+        if p.email is not None and p.email != google["email"].lower():
             raise ErroRegra("Esse CPF está ligado a outra conta Google. Entre com a conta que você usou no primeiro "
                             "acesso. Se trocou de conta, fale com a coordenação.")
+        if p.email is not None:  # a coordenação já tinha cadastrado este e-mail
+            p.whatsapp = whatsapp
+            return abrir_sessao(db, sessao, p, ip, email=p.email, sub=google.get("sub"), nome=google.get("nome"))
         if achar_pessoa(db, google["email"], google.get("sub")) is not None:
             raise ErroRegra("Esta conta Google já está ligada a outro cadastro. Fale com a coordenação.")
         ligar_conta_google(p, google["email"], google.get("sub"), whatsapp)
@@ -248,12 +249,10 @@ def primeiro_acesso(db: Session, sessao: dict, cpf: str, whatsapp: str, ip: str 
     return "/auth/login"
 
 
-def requisitos_para_aprovar(tipo: str, equipe: str | None, nome_sga: str | None, lider_id: int | None) -> list[str]:
+def requisitos_para_aprovar(tipo: str, equipe: str | None, lider_id: int | None) -> list[str]:
     faltando = []
     if tipo in {"especialista", "lider"} and not equipe:
         faltando.append("equipe")
-    if tipo in {"especialista", "lider", "vendedora_interna"} and not nome_sga:
-        faltando.append("nome ou matrícula no SGA")
     if tipo == "especialista" and not lider_id:
         faltando.append("líder")
     return faltando
@@ -262,12 +261,18 @@ def requisitos_para_aprovar(tipo: str, equipe: str | None, nome_sga: str | None,
 def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: Config) -> Pessoa:
     """Aprovar, editar ou bloquear um cadastro (painel do administrador)."""
     novo = {
-        "nome": alvo.nome, "tipo": alvo.tipo, "equipe": alvo.equipe, "nome_sga": alvo.nome_sga,
+        "nome": alvo.nome, "tipo": alvo.tipo, "equipe": alvo.equipe,
         "lider_id": alvo.lider_id, "situacao": alvo.situacao, "cpf": alvo.cpf, "whatsapp": alvo.whatsapp,
-        "matricula_sga": alvo.matricula_sga,
     }
-    if "matricula_sga" in dados:
-        novo["matricula_sga"] = limpar_matricula(dados["matricula_sga"])
+    troca_de_email = False
+    if "email" in dados:
+        email = limpar_email(dados["email"])
+        if email != alvo.email:
+            if quem.id == alvo.id or (alvo.email and alvo.email in cfg.admin_emails):
+                raise ErroRegra("Este e-mail de administrador não pode ser trocado por aqui.")
+            if email and db.scalars(select(Pessoa).where(func.lower(Pessoa.email) == email, Pessoa.id != alvo.id)).first():
+                raise ErroRegra("Já existe outro cadastro com esse e-mail.")
+            troca_de_email = True
     if "cpf" in dados:
         novo["cpf"] = limpar_cpf(dados["cpf"]) if so_numeros(dados["cpf"]) else None
         if novo["cpf"] and db.scalars(select(Pessoa).where(Pessoa.cpf == novo["cpf"], Pessoa.id != alvo.id)).first():
@@ -282,8 +287,6 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
         novo["tipo"] = dados["tipo"]
     if "equipe" in dados:
         novo["equipe"] = limpar_equipes(dados["equipe"])
-    if "nome_sga" in dados:
-        novo["nome_sga"] = limpar_nome_sga(dados["nome_sga"])
     if "lider_id" in dados:
         lider_id = dados["lider_id"] or None
         if lider_id is not None:
@@ -304,8 +307,7 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
     if alvo.email and alvo.email in cfg.admin_emails and (novo["tipo"] != "admin" or novo["situacao"] != "ativo"):
         raise ErroRegra("Este e-mail está em ADMIN_EMAILS no Render: continua administrador e ativo.")
     if novo["situacao"] == "ativo" and alvo.situacao != "ativo":  # aprovar um pendente ou liberar um bloqueado
-        faltando = requisitos_para_aprovar(novo["tipo"], novo["equipe"], novo["nome_sga"] or novo["matricula_sga"],
-                                           novo["lider_id"])
+        faltando = requisitos_para_aprovar(novo["tipo"], novo["equipe"], novo["lider_id"])
         if faltando:
             raise ErroRegra(f"Para aprovar como {TIPOS[novo['tipo']].lower()}, preencha: " + ", ".join(faltando) + ".")
 
@@ -313,6 +315,8 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
         alvo.aprovado_em, alvo.aprovado_por = agora(), quem.email
     for campo, valor in novo.items():
         setattr(alvo, campo, valor)
+    if troca_de_email:  # a conta Google antiga deixa de entrar; o próximo acesso liga a nova
+        alvo.email, alvo.google_sub, alvo.vinculado_em = email, None, None
     db.commit()
     db.refresh(alvo)
     return alvo

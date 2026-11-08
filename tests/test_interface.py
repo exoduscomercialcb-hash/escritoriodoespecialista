@@ -43,7 +43,7 @@ def servidor(tmp_path_factory):
         time.sleep(0.05)
     with app.state.Sessao() as s:  # um líder já aprovado, para ligar o especialista novo
         s.add(Pessoa(nome="Lider Inventado", email="lider.inventado@exemplo.com.br", tipo="lider", equipe="Elite",
-                     nome_sga="LIDER INVENTADO", situacao="ativo"))
+                     situacao="ativo"))
         s.commit()
     yield f"http://127.0.0.1:{porta}"
     srv.should_exit = True
@@ -112,7 +112,7 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     expect(adm.locator('#home [data-go="adm"] h3')).to_have_text("Painel do administrador")
     expect(adm.locator("#btnAtualizar")).to_be_disabled()
     expect(adm.locator("#updTexto")).to_contain_text("Pode usar 1 vez a cada 15 minutos")
-    expect(adm.locator("#pfs-adm")).to_have_text("Todos os cadastrados já entraram")
+    expect(adm.locator("#pfs-adm")).to_have_text("1 pessoa aguardando 1º acesso")  # o líder do teste nunca entrou
 
     # o admin importa a planilha (colada do Excel) e faz um cadastro avulso
     adm.click('#home [data-go="adm"]')
@@ -129,7 +129,7 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     adm.fill("#novoCpf", cpf_cad)
     adm.click("#novoForm button[type=submit]")
     adm.click('#cadFiltro [data-sit="aguardando"]')
-    expect(adm.locator("#cadTabela tr.pessoa")).to_have_count(2)
+    expect(adm.locator("#cadTabela tr.pessoa")).to_have_count(3)
     expect(adm.locator("#cadTabela tr.pessoa", has_text="Especialista Novo Inventado")).to_contain_text("Aguardando 1º acesso")
 
     # a pessoa abre o endereço do escritório no celular: primeiro acesso com CPF e WhatsApp, depois o Google

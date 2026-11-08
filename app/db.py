@@ -48,8 +48,6 @@ class Pessoa(Base):
     tipo: Mapped[str] = mapped_column(String(30))
     # Uma ou mais equipes, separadas por vírgula ("Elite, Lua"): há liderados e líderes em mais de uma equipe.
     equipe: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    nome_sga: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    matricula_sga: Mapped[str | None] = mapped_column(String(20), nullable=True)  # matrícula no SGA
     lider_id: Mapped[int | None] = mapped_column(ForeignKey("pessoas.id", ondelete="SET NULL"), nullable=True)
     # CPF (só números): é por ele que a pessoa, ao abrir o link, é ligada ao cadastro feito antes pela coordenação.
     cpf: Mapped[str | None] = mapped_column(String(11), unique=True, index=True, nullable=True)
@@ -120,9 +118,10 @@ def motivo_da_falha(erro: BaseException) -> str:
 
 # Colunas acrescentadas depois que as tabelas já existiam no Supabase (create_all não mexe em tabela existente).
 COLUNAS_NOVAS = {
-    "pessoas": {"cpf": "VARCHAR(11)", "whatsapp": "VARCHAR(20)", "vinculado_em": "TIMESTAMP WITH TIME ZONE",
-                "matricula_sga": "VARCHAR(20)"},
+    "pessoas": {"cpf": "VARCHAR(11)", "whatsapp": "VARCHAR(20)", "vinculado_em": "TIMESTAMP WITH TIME ZONE"},
 }
+# Colunas tiradas do sistema (matrícula e nome no SGA saíram por decisão do Rafael em 08/11; os dados são apagados).
+COLUNAS_REMOVIDAS = {"pessoas": ["matricula_sga", "nome_sga"]}
 # Só no Postgres (o SQLite não limita tamanho de texto): colunas que ficaram maiores.
 AJUSTES_POSTGRES = ['ALTER TABLE "pessoas" ALTER COLUMN "equipe" TYPE VARCHAR(200)']
 INDICES_NOVOS = ['CREATE UNIQUE INDEX IF NOT EXISTS "ix_pessoas_cpf" ON "pessoas" ("cpf")']
@@ -138,6 +137,13 @@ def migrar(engine: Engine) -> None:
             for coluna, tipo in colunas.items():
                 if coluna not in existentes:
                     conn.execute(text(f'ALTER TABLE "{tabela}" ADD COLUMN "{coluna}" {tipo}'))
+        for tabela, colunas in COLUNAS_REMOVIDAS.items():
+            if tabela not in tabelas:
+                continue
+            existentes = {c["name"] for c in inspect(conn).get_columns(tabela)}
+            for coluna in colunas:
+                if coluna in existentes:
+                    conn.execute(text(f'ALTER TABLE "{tabela}" DROP COLUMN "{coluna}"'))
         for indice in INDICES_NOVOS:
             conn.execute(text(indice))
         if engine.dialect.name == "postgresql" and "pessoas" in tabelas:

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
-from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha
+from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
 from .db import Pessoa
 from .dependencias import banco, config, exige_json, exige_painel
@@ -20,12 +20,11 @@ class CorpoPessoa(BaseModel):
     nome: str | None = None
     tipo: str | None = None
     equipe: str | None = None
-    nome_sga: str | None = None
     lider_id: int | None = None
     situacao: str | None = None
     cpf: str | None = None
     whatsapp: str | None = None
-    matricula_sga: str | None = None
+    email: str | None = None
 
 
 class CorpoPessoaNova(BaseModel):
@@ -33,10 +32,9 @@ class CorpoPessoaNova(BaseModel):
     tipo: str
     cpf: str
     equipe: str | None = None
-    nome_sga: str | None = None
     lider_id: int | None = None
     whatsapp: str | None = None
-    matricula_sga: str | None = None
+    email: str | None = None
 
 
 class CorpoPlanilha(BaseModel):
@@ -55,14 +53,14 @@ def listar_pessoas(situacao: str | None = None, q: str | None = None, db: Sessio
     if situacao in SITUACOES:
         consulta = consulta.where(Pessoa.situacao == situacao)
     elif situacao == "aguardando":  # cadastrado pela coordenação e ainda não entrou com o Google
-        consulta = consulta.where(Pessoa.email.is_(None), Pessoa.situacao != "bloqueado")
+        consulta = consulta.where(Pessoa.vinculado_em.is_(None), Pessoa.situacao != "bloqueado")
     ordem = case((Pessoa.situacao == "pendente", 0), (Pessoa.situacao == "ativo", 1), else_=2)
     pessoas = db.scalars(consulta.order_by(ordem, Pessoa.nome)).all()
     termo = limpar_espacos(q).lower()
     if termo:
         numeros = so_numeros(termo)
         pessoas = [p for p in pessoas
-                   if termo in " ".join(filter(None, [p.nome, p.email, p.nome_sga, p.equipe, p.matricula_sga,
+                   if termo in " ".join(filter(None, [p.nome, p.email, p.equipe,
                                                       TIPOS.get(p.tipo)])).lower()
                    or (len(numeros) >= 4 and numeros in (p.cpf or "") + " " + (p.whatsapp or ""))]
     return {"pessoas": [pessoa_para_json(p) for p in pessoas]}
@@ -78,6 +76,13 @@ def nova_pessoa(corpo: CorpoPessoaNova, db: Session = Depends(banco), quem: Pess
 @rotas_admin.post("/importar", dependencies=[Depends(exige_json)])
 def importar(corpo: CorpoPlanilha, db: Session = Depends(banco), quem: Pessoa = Depends(exige_painel)):
     return importar_planilha(db, corpo.texto, db.get(Pessoa, quem.id))
+
+
+@rotas_admin.get("/cadastros.csv")
+def baixar_cadastros(db: Session = Depends(banco)):
+    """Todos os cadastros numa planilha (abre no Excel), com o telefone e o e-mail do primeiro acesso."""
+    return Response(planilha_de_cadastros(db), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="cadastros-escritorio.csv"'})
 
 
 @rotas_admin.get("/modelo-planilha.csv")
