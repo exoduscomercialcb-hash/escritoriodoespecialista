@@ -132,6 +132,15 @@ def test_sair_encerra_a_sessao(admin):
     assert admin.get("/api/eu").json()["estado"] == "anonimo"
 
 
+def test_sair_com_link_volta_para_o_cadastro(admin):
+    """Erro de 08/11: quem saía para cadastrar outra conta perdia o link e via "acesso não liberado"."""
+    link = admin.post("/api/admin/links", json={"tipo": "lider"}).json()["link"]
+    r = admin.get("/auth/sair", params={"link": link["codigo"]}, follow_redirects=False)
+    assert r.headers["location"] == f"/cadastro/{link['codigo']}"
+    assert admin.get("/api/eu").json()["estado"] == "anonimo"
+    assert admin.get("/auth/sair", params={"link": "nao-existe"}, follow_redirects=False).headers["location"] == "/"
+
+
 def test_rota_de_teste_nao_existe_fora_do_modo_teste():
     with TestClient(criar_app(cfg_teste(modo_teste=False)), base_url=f"https://{HOST}") as c:
         assert c.get("/teste/entrar", params={"email": ADMIN}).status_code == 404

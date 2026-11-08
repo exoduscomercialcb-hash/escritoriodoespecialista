@@ -28,7 +28,9 @@ except ImportError:  # pragma: no cover
 @pytest.fixture(scope="module")
 def servidor(tmp_path_factory):
     banco = tmp_path_factory.mktemp("banco") / "teste.db"
-    app = criar_app(cfg_teste(database_url=f"sqlite:///{banco}"))
+    # Google "configurado" com valores inventados: o teste vê o redirecionamento, mas nada sai da máquina.
+    app = criar_app(cfg_teste(database_url=f"sqlite:///{banco}", google_client_id="id-inventado",
+                              google_client_secret="segredo-inventado"))
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         porta = s.getsockname()[1]
@@ -118,11 +120,18 @@ def test_fluxo_completo_admin_link_cadastro_aprovacao_acessos(servidor, navegado
     url_link = campo.input_value()
     codigo = url_link.rsplit("/", 1)[-1]
 
-    # a pessoa abre o link, vê o tipo, entra (login de teste) e preenche o nome
+    # o admin, já logado, abre o link: vê que está conectado e o botão de sair mantém o link (erro de 08/11)
+    aba = adm_ctx.new_page()
+    aba.goto(url_link)
+    expect(aba.locator("#jaConectado")).to_contain_text("Você já está conectado como Admin Teste")
+    assert aba.locator("#sairCadastrar").get_attribute("href") == f"/auth/sair?link={codigo}"
+    aba.close()
+
+    # a pessoa abre o link sem estar logada: vai direto para o login do Google, levando o link
     ctx, pg, erros = _pagina(navegador, 390)
-    pg.goto(url_link)
-    expect(pg.locator("#loginSub")).to_have_text("Cadastro de acesso: Especialista.")
-    assert pg.locator("#go").get_attribute("href") == f"/auth/login?link={codigo}"
+    with pg.expect_request(lambda r: r.url.endswith(f"/auth/login?link={codigo}")):
+        pg.goto(url_link)
+    # entra (login de teste, no lugar do Google) e preenche o nome
     pg.goto(servidor + f"/teste/entrar?email=especialista.novo@exemplo.com.br&nome=Nome%20Google&link={codigo}")
     expect(pg.locator("#cadNome")).to_have_value("Nome Google")
     pg.fill("#cadNome", "Especialista Novo Inventado")

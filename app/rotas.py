@@ -66,9 +66,11 @@ async def auth_callback(request: Request, db: Session = Depends(banco)):
 
 
 @rotas.get("/auth/sair", include_in_schema=False)
-def auth_sair(request: Request):
+def auth_sair(request: Request, link: str | None = None, db: Session = Depends(banco)):
+    """Sai da conta. Com ?link=, volta para o cadastro daquele link (para cadastrar outra conta Google)."""
     request.session.clear()
-    return RedirectResponse("/", status_code=303)
+    destino = f"/cadastro/{link}" if link and link_valido(db, link) else "/"
+    return RedirectResponse(destino, status_code=303)
 
 
 @rotas_teste.get("/teste/entrar", include_in_schema=False)

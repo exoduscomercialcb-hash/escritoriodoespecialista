@@ -58,24 +58,37 @@
       h('p', { class: 'hint' }, 'Use a sua conta Google. Primeiro acesso? Peça à coordenação o link de cadastro do seu tipo de acesso.'));
   }
 
-  function telaNaoLiberado(eu, extra) {
+  function telaNaoLiberado(eu, extra, sair) {
     telaLogin(
       extra ? h('p', { class: 'ok-msg' }, extra) : null,
       h('p', { class: 'err', id: 'naoLiberado' }, eu.mensagem || 'Seu acesso ainda não foi liberado. Fale com a coordenação.'),
       eu.email ? h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email)) : null,
-      h('a', { class: 'btn sec', href: '/auth/sair' }, 'Entrar com outra conta'));
+      h('a', { class: 'btn sec', id: 'outraConta', href: sair || '/auth/sair' }, 'Entrar com outra conta'));
   }
 
   async function telaCadastro(codigo, eu) {
     let link;
     try { link = await api('/api/cadastro/' + encodeURIComponent(codigo)); } catch (e) { link = { valido: false, mensagem: e.message }; }
-    if (eu.estado === 'pendente' || eu.estado === 'bloqueado') return telaNaoLiberado(eu);
     if (!link.valido) return telaLogin(h('p', { class: 'err' }, link.mensagem), h('a', { class: 'btn sec', href: '/' }, 'Ir para o início'));
     $('loginSub').textContent = 'Cadastro de acesso: ' + link.tipo_nome + '.';
-    if (eu.estado !== 'sem_cadastro') {
+    // Sair mantendo o link: depois de sair, a pessoa volta para este cadastro (e não para o login comum).
+    const sairComLink = '/auth/sair?link=' + encodeURIComponent(codigo);
+    if (eu.estado === 'ativo') {
       return telaLogin(
-        h('p', { class: 'hint' }, 'Entre com a sua conta Google. Depois, escreva o seu nome completo. A coordenação aprova o cadastro e libera o acesso.'),
-        botaoGoogle('/auth/login?link=' + encodeURIComponent(codigo)));
+        h('p', { class: 'hint', id: 'jaConectado' }, 'Você já está conectado como ', h('b', {}, eu.pessoa.nome),
+          eu.pessoa.email ? ' (' + eu.pessoa.email + ')' : '', '. Este link é para cadastrar outra conta Google.'),
+        h('a', { class: 'primary', id: 'sairCadastrar', href: sairComLink }, 'Sair e cadastrar outra conta'),
+        h('a', { class: 'btn sec', href: '/' }, 'Continuar como ' + eu.pessoa.nome));
+    }
+    if (eu.estado === 'pendente' || eu.estado === 'bloqueado') return telaNaoLiberado(eu, null, sairComLink);
+    if (eu.estado !== 'sem_cadastro') {
+      // Quem abre o link sem estar logado vai direto para o login do Google.
+      const destino = '/auth/login?link=' + encodeURIComponent(codigo);
+      if (eu.google_configurado !== false) location.replace(destino);
+      return telaLogin(
+        h('p', { class: 'hint' }, eu.google_configurado !== false ? 'Abrindo o login do Google…' :
+          'Entre com a sua conta Google. Depois, escreva o seu nome completo. A coordenação aprova o cadastro e libera o acesso.'),
+        botaoGoogle(destino));
     }
     const nome = h('input', { class: 'field', id: 'cadNome', name: 'nome', autocomplete: 'name', required: true, minlength: 3, maxlength: 120, value: eu.nome || '' });
     const erro = h('p', { class: 'err', hidden: true });
@@ -88,7 +101,7 @@
         telaNaoLiberado({ mensagem: r.mensagem, email: eu.email }, 'Cadastro enviado. Assim que a coordenação aprovar, é só entrar com o Google.');
       } catch (e) { erro.textContent = e.message; erro.hidden = false; enviar.disabled = false; }
     } },
-      h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email)),
+      h('p', { class: 'quem' }, 'Conta Google: ', h('b', {}, eu.email), ' · ', h('a', { href: sairComLink }, 'usar outra conta')),
       h('label', { for: 'cadNome' }, 'Nome completo', nome),
       erro, enviar);
     $('app').hidden = true; $('login').hidden = false;
@@ -308,8 +321,8 @@
     let eu;
     try { eu = await api('/api/eu'); } catch (e) { return telaLogin(h('p', { class: 'err' }, 'Não foi possível falar com o servidor. Aperte F5 para tentar de novo.')); }
     const m = location.pathname.match(/^\/cadastro\/([^/]+)$/);
-    if (eu.estado === 'ativo') { if (m) history.replaceState(null, '', '/'); return telaApp(eu); }
     if (m) return telaCadastro(decodeURIComponent(m[1]), eu);
+    if (eu.estado === 'ativo') return telaApp(eu);
     if (eu.estado === 'anonimo') return telaAnonimo(eu);
     return telaNaoLiberado(eu);
   }
