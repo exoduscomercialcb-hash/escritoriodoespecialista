@@ -6,17 +6,16 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 
 ## Onde estamos (atualize esta seção a cada entrega)
 
-- **Etapa 1 concluída e no ar** em https://escritorio-do-especialista.onrender.com (PR #1 aprovado em 08/11).
-  O Render publica a `main`, só depois dos testes passarem ("After CI Checks Pass").
-- **Etapa 2 em andamento** na branch `etapa-2-sincronizacao`: o servidor busca SGA, Power CRM e BI sozinho
-  (seção 3 e etapa 2 da seção 10 de `docs/ESPECIFICACAO.md`). Enquanto o sistema atual estiver no ar, a busca completa
-  do SGA roda **1 vez por dia, de madrugada** (os dois sistemas usam o mesmo token, que já foi bloqueado por excesso).
-- **Pendente do Rafael:** "Verify" do domínio `escritorio.exodusbeneficios.com.br` no Render; cadastrar no Render
-  `SGA_TOKEN`, `SGA_USUARIO`, `SGA_SENHA` e `POWERCRM_TOKEN`; exportar do sistema atual o que só existe na página
-  (histórico dos meses fechados, lista do remarketing, marcações e reativações).
-- **Depois:** etapa 3, os cards (as 6 telas de hoje lendo da API).
-- **Plano detalhado e ordem das partes:** `docs/PLANO_ETAPAS_2_E_3.md` (reaproveitar o script e a página atuais; o texto
-  para pedir a exportação ao Claude que tem o Kit está lá).
+- **No ar** em https://escritorio.exodusbeneficios.com.br (e no endereço `.onrender.com`), publicando a `main` só
+  depois dos testes ("After CI Checks Pass"). PRs #1 a #4 aprovados em 08/11.
+- **Etapa 1** concluída: login com Google, cadastro pela coordenação, entrada com CPF + WhatsApp, painel do
+  administrador (Cadastros, Acessos, Atualizações).
+- **Etapa 2, parte 1** no ar: trava do SGA, registro das buscas e teste de conexão. **Teste de 08/11, 02:33: SGA e
+  Power CRM conectaram.**
+- **Cards (partes 2.2, 3.1 e 3.2)** no ar em `/escritorio`, ainda **sem dados**: falta o Rafael pedir a exportação ao
+  Claude que tem o Kit e importar em Painel > Atualizações > Dados do sistema atual.
+- **Próximo:** parte 2.3, a busca automática (o script atual adaptado), 1 vez por dia às 03:52 enquanto o sistema atual
+  estiver no ar. Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa
 
@@ -51,7 +50,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | Servidor | Render, serviço `escritorio-do-especialista` (`srv-dbnqb0rrjlhs739ikqog`), workspace "Exodus's workspace", plano Starter, região Virginia | Publica sozinho a cada push na branch configurada. Verificação de saúde: `/saude`. |
 | Banco | Supabase, projeto `qrgoeoquwqdpwsxgdrzx` (região us-east-1), numa **organização separada** do projeto `monitoramento-painel` | O conector do Supabase desta conta só enxerga a outra organização: não dá para consultar o banco do escritório por ele. As tabelas são criadas e migradas pelo próprio servidor ao ligar. RLS ligada em todas. |
 | Login | Google Cloud, cliente OAuth "Escritório no Render" | URIs de retorno: `https://escritorio-do-especialista.onrender.com/auth/callback` e `https://escritorio.exodusbeneficios.com.br/auth/callback`. |
-| Domínio | Hostinger: CNAME `escritorio` → `escritorio-do-especialista.onrender.com` | O código já aceita o domínio (`HOSTS_ESCRITORIO` tem esse padrão). |
+| Domínio | Hostinger: CNAME `escritorio` → `escritorio-do-especialista.onrender.com`; verificado no Render (08/11) | O código já aceita o domínio (`HOSTS_ESCRITORIO` tem esse padrão). |
 | Variáveis no Render | `DATABASE_URL` (endereço do Session pooler, colado com `[YOUR-PASSWORD]`), `DATABASE_PASSWORD`, `SESSION_SECRET`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `ADMIN_EMAILS` (hoje: `exoduscomercialcb@gmail.com` e `rafaelveiga.exodus@gmail.com`), `TZ` | Lista completa e comentada em `.env.example`. |
 | Sistema atual (antigo) | Artefatos no Claude (página e Kit privado), ver `docs/MANUAL_SISTEMA_ATUAL.md`, seção 2 | Continua no ar até o Rafael aprovar o novo. |
 | Referência do sistema atual | `referencia/`: página (`pagina_atual.html`, sem dados), scripts Python que montam os dados e testes de regressão | É de onde se porta a lógica (etapas 2 a 5) e o visual. Não roda no servidor. |
