@@ -1,0 +1,42 @@
+name: Testes
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TZ: America/Sao_Paulo
+      EXIGE_NAVEGADOR: "1"
+      TESTE_POSTGRES_URL: postgresql://postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+      - name: Instalar o navegador dos testes
+        run: python -m playwright install --with-deps chromium
+      - name: Rodar os testes
+        run: python -m pytest -q

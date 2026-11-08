@@ -1,0 +1,28 @@
+# Serviço do Escritório do Especialista no Render (Blueprint).
+# Os valores secretos são preenchidos no painel do Render (sync: false) e nunca ficam aqui.
+services:
+  - type: web
+    name: escritorio-do-especialista
+    runtime: python
+    plan: starter
+    region: virginia
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn --factory app.main:criar_app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips '*'
+    healthCheckPath: /saude
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: TZ
+        value: America/Sao_Paulo
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false

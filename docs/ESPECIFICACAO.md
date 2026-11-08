@@ -69,10 +69,20 @@ O painel do administrador mostra o horário da última atualização bem-sucedid
 - Para especialista, o vínculo com o SGA é pelo nome exato do especialista no SGA (campo `sga`), não pelas duas primeiras palavras. Isso evita o problema "Rodrigo Moraes Luiz × Rodrigo Moraes Venâncio".
 - Migrar os acessos de hoje: a lista de pessoas, equipes e tipos vem do sistema atual. O Claude do chat entrega essa lista direto no banco, sem passar pelo GitHub. Cada pessoa só precisa entrar uma vez com o Google pelo link do tipo dela.
 
+> **Decisão do Rafael em 08/11/2026 (substitui os links de cadastro acima):**
+> - Só entra quem a coordenação cadastrou antes: **nome, tipo de conta e CPF** (equipe, nome no SGA, líder e WhatsApp quando tiver). O cadastro é feito no painel do administrador, um por um ou **colando a planilha do Excel**.
+> - **Um endereço só para todo mundo**, sem link de cadastro. No **primeiro acesso**, a pessoa informa **CPF e WhatsApp** e entra com o Google; o CPF liga a conta Google ao cadastro e o acesso já fica liberado. Das próximas vezes, só "Entrar com Google".
+> - Se a pessoa clicar direto em "Entrar com Google" no primeiro acesso, o sistema pede CPF e WhatsApp em seguida.
+> - O WhatsApp informado é gravado no cadastro (a coordenação não tinha os telefones).
+> - O administrador (Rafael) vê o card do painel e, a partir da etapa 3, todos os cards e todas as equipes.
+> - **Tela de entrada:** CPF e WhatsApp em cima e um botão só, **Entrar com Google**, embaixo, liberado depois dos dois preenchidos (senão as pessoas não preenchem o telefone). Vale para todas as entradas; o WhatsApp novo atualiza o cadastro. Quem tentar entrar com outra conta Google que não a ligada ao CPF não entra.
+> - **Cadastros em tabela**, com as colunas **E-mail Google** e **WhatsApp**, que se preenchem no primeiro acesso.
+> - A planilha de hoje (Usuário, Tipo de conta, Nome, Equipe(s), CPF) entra como está: "liderado" = especialista, "INSIDE SALES" = vendedora interna, "SENHA FINANCEIRO" = financeiro, "SENHA MASTER" = o próprio Rafael (o CPF é ligado ao cadastro de administrador). Uma pessoa pode ter **mais de uma equipe**. As colunas Matrícula SGA e Nome no SGA, se vierem, são ignoradas (saíram do sistema por decisão do Rafael; na etapa 2, a ligação com o SGA será pelo CPF ou pelo nome). Sem a coluna Líder, o liderado fica com o líder da equipe dele quando só um líder cuida dela.
+
 ## 5. Painel do administrador
 Card novo no menu principal, só para `admin` (e a coordenação, se o Rafael liberar):
 - **Cadastros:** quem está cadastrado, tipo, equipe, nome no SGA, e-mail Google, situação (pendente, ativo, bloqueado), data de cadastro. Aprovar, editar, bloquear.
-- **Links de cadastro:** gerar, copiar, desativar, ver quantas pessoas usaram cada link.
+- ~~Links de cadastro~~ (não existem mais, decisão de 08/11). No lugar: **Novo cadastro** e **Importar planilha** dentro de Cadastros, com CPF e WhatsApp.
 - **Acessos:** quem entrou, quando (data e hora), quantas vezes, último acesso, quais abas abriu. Filtro por pessoa, equipe e período.
 - **Atualizações:** última atualização de cada fonte (SGA, Power CRM, BI, Drive), erros recentes e botão "atualizar agora" (respeitando o limite do SGA).
 - **Fila de comprovantes para conferir** (seção 3).

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Escritório do Especialista</title>
+<link rel="stylesheet" href="/static/escritorio.css">
+<script src="/static/escritorio.js" defer></script>
+</head>
+<body>
+
+<section id="login" hidden>
+  <div class="login-card">
+    <div class="login-head">
+      <div class="brand">EXODUS BENEFÍCIOS</div>
+      <h1>Escritório do Especialista</h1>
+      <p id="loginSub">Remarketing, evolução da base, validadas e comprovantes. Entre com sua conta Google.</p>
+    </div>
+    <div class="login-body" id="loginBody" aria-live="polite"><p class="hint">Carregando…</p></div>
+  </div>
+</section>
+
+<section id="app" class="mhome" hidden>
+  <section class="cover" aria-label="Capa">
+    <div class="cover-bar">
+      <div class="cover-id"><div><div class="cover-eyebrow" id="coverEyebrow">Menu principal</div><div class="cover-title" id="coverTitle">Escritório do Especialista</div></div></div>
+      <div class="cover-act">
+        <div class="cover-user"><h1 id="hName"></h1><p class="who" id="hWho"></p></div>
+        <button class="home-back" id="btnHome" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Menu principal</button>
+        <a class="home-back" id="logout" href="/auth/sair">Sair</a>
+      </div>
+    </div>
+    <div class="cover-upd" id="upd">
+      <button class="upd-btn" id="btnAtualizar" type="button" disabled aria-describedby="updTexto updUltima"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Atualizar meus dados</button>
+      <div class="upd-txt"><p id="updTexto"></p><small id="updUltima"></small></div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <nav id="home" aria-label="Menu principal"></nav>
+    <p class="empty" id="homeVazio" hidden>As telas do escritório (lista do remarketing, evolução da base, validadas, descontos, comprovantes e reativação) estão sendo levadas para este endereço novo. Por enquanto, continue usando o sistema atual.</p>
+
+    <section id="adminView" hidden aria-label="Painel do administrador">
+      <div class="seg adm-tabs" role="group" aria-label="Partes do painel">
+        <button type="button" data-adm="cad" aria-pressed="true">Cadastros</button>
+        <button type="button" data-adm="acs" aria-pressed="false">Acessos</button>
+      </div>
+
+      <div id="admCad">
+        <details class="adm-box" id="boxNovo">
+          <summary>+ Novo cadastro</summary>
+          <form class="box-in pc-form" id="novoForm">
+            <label>Nome completo<input class="field" id="novoNome" required maxlength="120"></label>
+            <label>Tipo de conta<select class="field" id="novoTipo" required></select></label>
+            <label>CPF<input class="field" id="novoCpf" required inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></label>
+            <fieldset class="equipes-campo"><legend>Equipe(s)</legend><div class="equipes" id="novoEquipes"></div></fieldset>
+            <label id="novoLiderCampo">Líder<select class="field" id="novoLider"></select></label>
+            <label>Telefone (WhatsApp) <small>(opcional)</small><input class="field" id="novoWhats" type="tel" maxlength="20" placeholder="(21) 98765-4321"></label>
+            <label>E-mail Google <small>(opcional: a pessoa só entra com ele)</small><input class="field" id="novoEmail" type="email" maxlength="254" placeholder="nome@gmail.com"></label>
+            <div class="row"><button class="primary" type="submit">Cadastrar</button><p class="err" id="novoErro" hidden></p></div>
+          </form>
+        </details>
+        <details class="adm-box" id="boxImportar">
+          <summary>Importar planilha</summary>
+          <div class="box-in">
+            <p class="legend">No Excel, selecione a planilha inteira (com a linha dos títulos), copie (Ctrl + C) e cole aqui (Ctrl + V). Colunas: <b>Nome</b>, <b>Tipo de conta</b> e <b>CPF</b>; se tiver, também <b>Equipe(s)</b>, <b>Líder</b>, <b>WhatsApp</b> e <b>E-mail</b>. Sem a coluna Líder, cada liderado fica com o líder da equipe dele. Quem já tem cadastro (mesmo CPF) é atualizado.</p>
+            <textarea class="field" id="impTexto" spellcheck="false" aria-label="Planilha colada"></textarea>
+            <div class="row">
+              <button class="primary" type="button" id="impEnviar">Importar</button>
+              <label class="btn">Abrir arquivo .csv<input type="file" id="impArquivo" accept=".csv,text/csv,text/plain" hidden></label>
+              <a class="btn" href="/api/admin/modelo-planilha.csv">Baixar modelo</a>
+            </div>
+            <div id="impResultado" role="status"></div>
+          </div>
+        </details>
+        <div class="adm-tools">
+          <div class="seg" role="group" aria-label="Situação do cadastro" id="cadFiltro">
+            <button type="button" data-sit="" aria-pressed="true">Todos</button>
+            <button type="button" data-sit="aguardando" aria-pressed="false">Aguardando 1º acesso</button>
+            <button type="button" data-sit="ativo" aria-pressed="false">Ativos</button>
+            <button type="button" data-sit="pendente" aria-pressed="false">Pendentes</button>
+            <button type="button" data-sit="bloqueado" aria-pressed="false">Bloqueados</button>
+          </div>
+          <input class="field" id="cadBusca" type="search" placeholder="Buscar nome, CPF, telefone, e-mail ou equipe" aria-label="Buscar cadastro">
+        </div>
+        <div class="cad-topo"><p class="legend" id="cadTotal"></p><a class="btn" id="cadBaixar" href="/api/admin/cadastros.csv">Baixar planilha</a></div>
+        <div class="tscroll"><table class="vtab cad" id="cadTabela"></table></div>
+      </div>
+
+      <div id="admAcs" hidden>
+        <form class="adm-tools" id="acsForm">
+          <label>Pessoa<select class="field" id="acsPessoa"></select></label>
+          <label>Equipe<select class="field" id="acsEquipe"></select></label>
+          <label>De<input class="field" id="acsDe" type="date"></label>
+          <label>Até<input class="field" id="acsAte" type="date"></label>
+          <button class="primary" type="submit">Filtrar</button>
+        </form>
+        <h2 class="adm-h">Quem entrou</h2>
+        <div class="tscroll"><table class="vtab" id="acsResumo"></table></div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

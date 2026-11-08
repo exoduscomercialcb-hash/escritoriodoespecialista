@@ -61,6 +61,7 @@ Dono: Rafael Veiga (coordenador, Exodus Benefícios). Responder sempre em portug
 - **Termos**: "especialista" (não voluntário), "equipe" (não cooperativa). A Exodus é Proteção Veicular, nunca "seguradora" nem "empresa".
 
 ## 6. Histórico de erros (sintoma → causa → correção → teste)
+Erros do sistema novo (Render): `AGENTS.md`, seção "Kit de erros".
 | Data | Sintoma | Causa | Correção | Teste |
 |---|---|---|---|---|
 | 30/10 e 31/10 | Log com "BLOQUEADO" | Token do SGA bloqueado por excesso de extração (várias tarefas usam o mesmo token) | Parar, não repetir; aplicar só os comprovantes com `pix.py` e publicar | Regra 1.4 |

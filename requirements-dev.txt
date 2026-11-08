@@ -1,0 +1,4 @@
+# Só para os testes (computador e GitHub Actions). O Render não instala.
+-r requirements.txt
+pytest==9.2.0
+playwright==1.64.1
