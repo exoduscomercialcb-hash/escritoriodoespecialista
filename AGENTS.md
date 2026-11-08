@@ -15,6 +15,8 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   `SGA_TOKEN`, `SGA_USUARIO`, `SGA_SENHA` e `POWERCRM_TOKEN`; exportar do sistema atual o que só existe na página
   (histórico dos meses fechados, lista do remarketing, marcações e reativações).
 - **Depois:** etapa 3, os cards (as 6 telas de hoje lendo da API).
+- **Plano detalhado e ordem das partes:** `docs/PLANO_ETAPAS_2_E_3.md` (reaproveitar o script e a página atuais; o texto
+  para pedir a exportação ao Claude que tem o Kit está lá).
 
 ## Antes de mexer em qualquer coisa
 
@@ -38,6 +40,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | Nada entra na `main` sem todos os testes passarem (GitHub Actions `Testes`). | O Render publica a partir do que estiver na branch configurada. |
 | Fuso horário: `America/Sao_Paulo`. No banco, datas em UTC; na tela, no horário de Brasília (`app/tempo.py`). | Todas as datas da Exodus são de Brasília. |
 | Não mostrar na conversa nem no código valores de variáveis secretas, nem trechos do registro do Render que contenham senha. | Um pedaço da senha do banco já vazou no registro (07/11). |
+| A página dos cards foi gerada uma vez (08/11) da página atual por `scripts/gerar_pagina_cards.py`. Daqui em diante, edite `app/static/cards.js` e `cards.css` direto; não rode o gerador de novo (ele apagaria as edições). | O gerador fica só como registro do que foi trocado. |
 | Para **apagar coluna** do banco: publicar primeiro o código que não usa a coluna; só na publicação seguinte colocar a coluna em `COLUNAS_REMOVIDAS`. | Na troca de versão, a versão antiga ainda atende por alguns segundos (08/11). |
 
 ## Mapa da obra
@@ -63,7 +66,12 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | `app/servicos.py` | Regras de login, entrada por CPF + WhatsApp, edição/aprovação/bloqueio, registro de acessos. |
 | `app/cadastro.py` | Cadastro pela coordenação: um por um, importação da planilha (tipos e títulos aceitos) e a planilha para baixar. |
 | `app/rotas.py`, `app/rotas_admin.py` | Endereços da API; tudo em `/api/admin` exige o painel. |
-| `app/static/` | Página única (visual copiado de `referencia/pagina_atual.html`) e página neutra. |
+| `app/static/escritorio.*` | Tela de entrada (CPF + WhatsApp + Google) e painel do administrador (`/#painel`). |
+| `app/paginas/cards.html`, `app/static/cards.js`, `app/static/cards.css` | Os cards (`/escritorio`): a página atual com o login trocado. Pede o pacote da pessoa em `/api/dados`. |
+| `app/static/claude_banco.js` | Faz o `window.claude.use('db')` da página atual conversar com `/api/banco` (marcações). |
+| `app/dados.py` | Importação dos dados do sistema atual e o pacote de cada pessoa (geral, equipe ou especialista). |
+| `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
+| `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA e do Power CRM (somente leitura), trava do SGA, registro das buscas, teste de conexão. |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 
 ### Como o acesso funciona hoje (decisões de 08/11)

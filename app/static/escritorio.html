@@ -38,8 +38,6 @@
   </section>
 
   <div class="wrap">
-    <nav id="home" aria-label="Menu principal"></nav>
-    <p class="empty" id="homeVazio" hidden>As telas do escritório (lista do remarketing, evolução da base, validadas, descontos, comprovantes e reativação) estão sendo levadas para este endereço novo. Por enquanto, continue usando o sistema atual.</p>
 
     <section id="adminView" hidden aria-label="Painel do administrador">
       <div class="seg adm-tabs" role="group" aria-label="Partes do painel">
@@ -99,6 +97,19 @@
         <div id="atuResultado" role="status"></div>
         <h2 class="adm-h">Histórico</h2>
         <div class="tscroll"><table class="vtab" id="atuHistorico"></table></div>
+        <details class="adm-box" id="boxSistemaAtual">
+          <summary>Dados do sistema atual (importação)</summary>
+          <div class="box-in">
+            <p class="legend">Arquivo <b>exportacao_escritorio.json</b>, gerado pelo Claude que tem o Kit (o texto para pedir está em <b>docs/PLANO_ETAPAS_2_E_3.md</b>). Ele traz os números de hoje, a lista do remarketing e as marcações, para os cards funcionarem antes da busca automática. Importar de novo substitui a importação anterior.</p>
+            <p class="hint" id="impAtualSituacao"></p>
+            <div class="row">
+              <label class="btn">Escolher arquivo<input type="file" id="impAtualArquivo" accept=".json,application/json" hidden></label>
+              <button class="primary" type="button" id="impAtualEnviar" disabled>Importar</button>
+              <span class="hint" id="impAtualNome"></span>
+            </div>
+            <div id="impAtualResultado" role="status"></div>
+          </div>
+        </details>
       </div>
 
       <div id="admAcs" hidden>

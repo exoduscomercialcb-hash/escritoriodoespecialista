@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, String, create_engine, event, inspect,
+from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, event, inspect,
                         text)
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.pool import StaticPool
@@ -88,6 +88,32 @@ def criar_engine(url: str) -> Engine:
     # Poucas conexões: o pooler do Supabase no plano gratuito tem limite baixo.
     return create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_recycle=1800,
                          connect_args=connect_args)
+
+
+class Pacote(Base):
+    """Dados prontos para a tela (o mesmo formato da página atual), um por chave:
+    "all" (visão geral), "t:<EQUIPE>" (líder), "e:<NOME>" (especialista), "rm:<NOME>" (lista do remarketing dele),
+    "esp:<NOME>" (como o especialista aparece no SGA), "motivos", "rtcfg". As marcações ficam em Documento.
+    Têm dados pessoais de associados: só o servidor lê (RLS ligada) e nunca vão para o repositório."""
+    __tablename__ = "pacotes"
+
+    chave: Mapped[str] = mapped_column(String(200), primary_key=True)
+    dados: Mapped[str] = mapped_column(Text)  # JSON
+    origem: Mapped[str] = mapped_column(String(30))  # importacao (sistema atual) ou busca (servidor)
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
+
+
+class Documento(Base):
+    """Banco de marcações da página (o mesmo formato do banco da página atual do Claude): coleção + documento.
+    Coleções: enviados (mensagens do remarketing marcadas), comp (baixas e regras), compconf (valor lido/conferido),
+    reativ (prints de reativação) e cancenv (cancelados avisados)."""
+    __tablename__ = "documentos"
+
+    colecao: Mapped[str] = mapped_column(String(60), primary_key=True)
+    doc_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    dados: Mapped[str] = mapped_column(Text)  # JSON
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
+    atualizado_por: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pessoas.id
 
 
 class Atualizacao(Base):

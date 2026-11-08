@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Escritório do Especialista</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,500..800&family=Manrope:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/static/cards.css">
+<script src="/static/claude_banco.js"></script>
+<script src="/static/cards.js" defer></script>
+</head>
+<body>
+<p id="carregando">Carregando o escritório…</p>
+
+<section id="login" hidden>
+  <div class="login-card">
+    <div class="login-head">
+      <div class="brand">EXODUS BENEFÍCIOS</div>
+      <h1>Escritório do Especialista</h1>
+      <p>Remarketing, evolução da base, validadas e comprovantes. Entre com seu usuário.</p>
+    </div>
+    <form class="login-body" id="loginForm" autocomplete="on">
+      <label for="u">Usuário
+        <input class="field" id="u" name="username" autocomplete="username" autocapitalize="characters" spellcheck="false" placeholder="PRIMEIRO E SEGUNDO NOME" required>
+      </label>
+      <label for="p">Senha
+        <input class="field" id="p" name="password" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" placeholder="••••" required>
+      </label>
+      <p class="err" id="err" hidden></p>
+      <button class="primary" id="go" type="submit">Entrar</button>
+      <p class="hint">Usuário é seu primeiro e segundo nome, em maiúsculas. Ex.: PAULO SERGIO. A senha de 4 dígitos é passada pela coordenação.</p>
+    </form>
+  </div>
+</section>
+
+<section id="app" hidden>
+  <section class="cover" aria-label="Capa">
+    <div class="cover-art"></div>
+    <div class="cover-bar">
+      <div class="cover-id"><span class="cover-sep" aria-hidden="true"></span><div><div class="cover-eyebrow" id="coverEyebrow">Menu principal</div><div class="cover-title" id="coverTitle">Escritório do Especialista</div></div></div>
+      <div class="cover-act">
+        <div class="cover-user"><h1 id="hName"></h1><p class="who" id="hWho"></p></div>
+        <button class="home-back" id="btnHome" type="button" hidden><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Menu principal</button>
+        <button class="home-back" id="logout" type="button">Sair</button>
+      </div>
+    </div>
+  </section>
+  <div class="wrap">
+    <nav class="views" id="views" hidden aria-label="Telas">
+      <button type="button" class="view-tab" data-view="list" aria-pressed="true">Lista do remarketing</button>
+      <button type="button" class="view-tab lead" data-view="evo" aria-pressed="false" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M2 15l5-5 3 3 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 6h4v4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Evolução da base</button>
+      <button type="button" class="view-tab lead" data-view="va" aria-pressed="false" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M3 10.5l4 4 10-10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Adesões validadas</button>
+      <button type="button" class="view-tab lead" data-view="ds" aria-pressed="false" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 15L15 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="6" cy="6" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="14" cy="14" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        Descontos</button>
+      <button type="button" class="view-tab lead" data-view="cp" aria-pressed="false" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 2h10v16l-2.5-1.6L10 18l-2.5-1.6L5 18Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 7h4M8 10.5h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Comprovante de adesões</button>
+      <button type="button" class="view-tab lead" data-view="rt" aria-pressed="false" hidden>
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M4 10a6 6 0 1 0 2-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M3 3v4h4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Reativação</button>
+    </nav>
+    <nav id="home" aria-label="Menu principal"></nav>
+    <div id="listView">
+    <div class="stats">
+      <div class="stat"><b id="sTotal" class="num">0</b><span>Contatos</span></div>
+      <div class="stat"><b id="sPend" class="num">0</b><span>Pendentes</span></div>
+      <div class="stat"><b id="sSent" class="num">0</b><span>Enviados</span></div>
+      <div class="stat"><b id="sGain" class="num">0</b><span>Pagam menos</span></div>
+      <div class="stat resg" id="stResg" role="button" tabindex="0" title="Ver só os reativados"><b id="sResg" class="num">0</b><span>Reativados</span></div>
+    </div>
+    <div class="tools">
+      <input class="field" id="q" type="search" placeholder="Buscar nome, placa, veículo, telefone ou cidade">
+      <div class="seg" role="group" aria-label="Tipo de veículo">
+        <button type="button" data-t="all" aria-pressed="true">Todos</button>
+        <button type="button" data-t="car" aria-pressed="false">Carros</button>
+        <button type="button" data-t="moto" aria-pressed="false">Motos</button>
+      </div>
+      <div class="seg" role="group" aria-label="Situação">
+        <button type="button" data-s="all" aria-pressed="true">Todos</button>
+        <button type="button" data-s="pend" aria-pressed="false">Pendentes</button>
+        <button type="button" data-s="sent" aria-pressed="false">Enviados</button>
+        <button type="button" data-s="resg" aria-pressed="false">Reativados</button>
+      </div>
+      <select class="field" id="selEsp" hidden aria-label="Especialista"></select>
+      <select class="field" id="selEq" hidden aria-label="Equipe"></select>
+    </div>
+    <p class="legend">Ordem: maior diferença primeiro. Diferença = último boleto que pagava − mensalidade de hoje com 10% de desconto.</p>
+    <p class="legend" id="saveNote" role="status"></p>
+    <div class="list" id="list"></div>
+    </div>
+    <div id="evoView" hidden>
+      <div class="evo-head">
+        <div>
+          <h2 id="evoTitle">Evolução da base</h2>
+          <p class="legend" id="evoSub"></p>
+        </div>
+        <div class="evo-filters">
+          <select class="field" id="evoTeam" hidden aria-label="Equipe"></select>
+          <div class="seg" id="evoSeg" role="group" aria-label="Base">
+            <button type="button" data-g="equipe" aria-pressed="true">Equipe toda</button>
+            <button type="button" data-g="propria" aria-pressed="false">Minha base</button>
+            <button type="button" data-g="liderados" aria-pressed="false">Liderados</button>
+          </div>
+          <select class="field" id="evoLid" hidden aria-label="Liderado"></select>
+        </div>
+      </div>
+      <article class="chart-card" id="cardVi" hidden>
+        <h3 id="viAdT">Suas ativações por mês</h3>
+        <p class="chart-src" id="viAdS"></p>
+        <div class="chart-legend"><span><i class="sw s1"></i>Adesões</span><span><i class="sw s2"></i>Adesões validadas</span></div>
+        <div class="chart" id="viAd"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card" id="cardViB" hidden>
+        <h3>Sua base na carteira</h3>
+        <p class="chart-src" id="viBS"></p>
+        <div class="chart" id="viB"></div>
+      </article>
+      <article class="chart-card">
+        <h3 id="chAdT">Adesões e adesões validadas por mês</h3>
+        <p class="chart-src" id="chAdS">SGA · adesões = ativações do mês · validadas = 1º boleto pago · o mês atual ainda está em validação</p>
+        <div class="chart-legend"><span><i class="sw s1"></i>Adesões</span><span id="chAdLv"><i class="sw s2"></i>Adesões validadas</span></div>
+        <div class="chart" id="chAd"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card" id="cardTx">
+        <h3>Taxa de adesões validadas por mês</h3>
+        <p class="chart-src">Adesões validadas ÷ adesões do mês</p>
+        <div class="chart" id="chTx"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3>Base ativa</h3>
+        <p class="chart-src">SGA · Ativo + Ativo - pendente instalação + Aguardando instalação, no último dia de cada mês · <span id="evoNow"></span></p>
+        <div class="chart" id="chBase"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3>Evolução da base % (mês a mês)</h3>
+        <p class="chart-src">Variação da base ativa em relação ao mês anterior</p>
+        <div class="chart" id="chPct"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3>Churn por mês</h3>
+        <p class="chart-src" id="chChurnS">Churn = base ativa do mês anterior + adesões validadas do mês − base ativa do mês · meses ainda em validação usam as adesões</p>
+        <div class="chart" id="chChurn"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3>Taxa de churn</h3>
+        <p class="chart-src">Churn ÷ base ativa do mês</p>
+        <div class="chart" id="chTxChurn"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <p class="legend" id="evoUpd"></p>
+      <section class="canc" aria-labelledby="cancTitle">
+        <h2 id="cancTitle">Cancelados recentes</h2>
+        <p class="legend" id="cancSub"></p>
+        <div class="canc-sum" id="cancSum"></div>
+        <div class="cleg cx-leg" id="cancLeg"><span><i class="g">✓</i><span><b>Remarketing realizado</b> (verde-escuro): o associado voltou (contrato ou reativação a partir de out/26, ativo ou aguardando instalação no SGA). A mensagem fica travada.</span></span><span><i class="gt">✓</i><span><b>Entra na promoção</b> (fundo branco, letras verdes): liberado para resgatar sem autorização prévia, com direito às promoções e condições especiais.</span></span><span><i class="am">!</i><span><b>Negociar com o coordenador</b> (amarelo): peça análise ao coordenador para poder entrar em contato com o associado e ver as condições liberadas.</span></span><span><i class="r">✕</i><span><b>Não entra na promoção</b> (vermelho): não pode entrar em contato para resgatar. Se o próprio associado entrar em contato, peça análise ao coordenador.</span></span></div>
+        <div class="tools"><input class="field" id="cancQ" type="search" placeholder="Pesquisar por placa ou associado" aria-label="Pesquisar cancelados por placa ou associado">
+          <div class="seg" id="cancSit" role="group" aria-label="Mensagem"><button type="button" data-cs="all" aria-pressed="true">Todos</button><button type="button" data-cs="pend" aria-pressed="false">Pendentes</button><button type="button" data-cs="sent" aria-pressed="false">Enviados</button><button type="button" data-cs="resg" aria-pressed="false">Reativados</button></div>
+          <span class="legend" id="cancQn" style="margin:0"></span></div>
+        <div class="list" id="cancList"></div>
+      </section>
+    </div>
+    <div id="vaView" hidden>
+      <div class="evo-head">
+        <div>
+          <h2 id="vaTitle">Adesões validadas</h2>
+          <p class="legend" id="vaSub"></p>
+        </div>
+        <div class="evo-filters">
+          <select class="field" id="vaTeam" hidden aria-label="Equipe"></select>
+          <select class="field" id="vaMes" aria-label="Mês"></select>
+          <button type="button" class="btn sm pdfb" data-pdf="va"><svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M5 2h7l4 4v12H5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 2v4h4M10 9v6M7.5 12.5 10 15l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Emitir PDF do resumo</button>
+        </div>
+      </div>
+      <div class="stats" id="vaStats"></div>
+      <article class="chart-card">
+        <h3 id="vaBarT">Adesões e validadas</h3>
+        <p class="chart-src" id="vaBarS"></p>
+        <div class="chart-legend"><span><i class="sw s1"></i>Adesões</span><span><i class="sw s2"></i>Adesões validadas</span><span>% = taxa de validação</span></div>
+        <div class="hbars" id="vaBars"></div>
+      </article>
+      <article class="chart-card">
+        <h3 id="vaLineT">Adesões e adesões validadas por mês</h3>
+        <p class="chart-src">SGA · adesões = ativações do mês · validadas = 1º boleto pago · o mês atual ainda está em validação</p>
+        <div class="chart-legend"><span><i class="sw s1"></i>Adesões</span><span><i class="sw s2"></i>Adesões validadas</span></div>
+        <div class="chart" id="vaAd"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3>Taxa de adesões validadas por mês</h3>
+        <p class="chart-src">Adesões validadas ÷ adesões do mês</p>
+        <div class="chart" id="vaTx"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3 id="vaBonT">Bônus do líder</h3>
+        <p class="chart-src">Adesões validadas da equipe no mês: 20 = R$ 500,00 · 30 = R$ 2.000,00 · 60 = R$ 4.000,00 · 100 = R$ 6.000,00 (vale a maior faixa atingida)</p>
+        <div class="tscroll" id="vaBonus"></div>
+      </article>
+      <article class="chart-card">
+        <h3 id="vaPendT">Adesões com o 1º boleto pendente</h3>
+        <p class="chart-src" id="vaPendS"></p>
+        <div class="cleg" id="vaLeg"><span><i class="w"></i>1º boleto pendente</span><span><i class="b">Aa</i>Adesão validada (1º boleto pago)</span><span><i class="gt">Aa</i>Reativou, aguardando o 2º boleto</span><span><i class="g">Aa</i>Reativação validada (pagou o boleto seguinte)</span></div>
+        <div class="seg vf" id="vaFilt" role="group" aria-label="Filtrar adesões"></div>
+        <div class="cp-fbar" id="vaFbar"><span></span><button type="button" class="btn sm" hidden>Limpar filtros e classificação</button></div>
+        <div class="tscroll" id="vaPend"></div>
+      </article>
+      <p class="legend" id="vaUpd"></p>
+    </div>
+    <div id="dsView" hidden>
+      <div class="evo-head">
+        <div>
+          <h2 id="dsTitle">Descontos</h2>
+          <p class="legend" id="dsSub"></p>
+        </div>
+        <div class="evo-filters">
+          <select class="field" id="dsTeam" hidden aria-label="Equipe"></select>
+          <select class="field" id="dsMes" aria-label="Mês"></select>
+          <div class="seg" id="dsPl" role="group" aria-label="Plantão">
+            <button type="button" data-pl="all" aria-pressed="true">Todos</button>
+            <button type="button" data-pl="P" aria-pressed="false">Plantão</button>
+            <button type="button" data-pl="F" aria-pressed="false">Fora do plantão</button>
+          </div>
+          <button type="button" class="btn sm pdfb" data-pdf="ds"><svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M5 2h7l4 4v12H5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 2v4h4M10 9v6M7.5 12.5 10 15l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Emitir PDF do resumo</button>
+        </div>
+      </div>
+      <div class="stats" id="dsStats"></div>
+      <article class="chart-card">
+        <h3 id="dsBarT">Adesões e descontos</h3>
+        <p class="chart-src" id="dsBarS"></p>
+        <div class="chart-legend" id="dsBarL"></div>
+        <div class="hbars" id="dsBars"></div>
+      </article>
+      <article class="chart-card">
+        <h3 id="dsLineT">Adesões realizadas e adesões com desconto por mês</h3>
+        <p class="chart-src">Mês da ativação da venda · o filtro de plantão muda só as adesões com desconto</p>
+        <div class="chart-legend"><span><i class="sw s1"></i>Adesões realizadas</span><span><i class="sw s3"></i>Adesões com desconto</span></div>
+        <div class="chart" id="dsAd"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3 id="dsTxT">% de adesões com desconto por mês</h3>
+        <p class="chart-src">Adesões com desconto ÷ adesões realizadas do mês</p>
+        <div class="chart" id="dsTx"></div><p class="swipe">← deslize o gráfico para ver os meses anteriores</p>
+      </article>
+      <article class="chart-card">
+        <h3 id="dsRecT">Recorrente do líder</h3>
+        <p class="chart-src">Taxa = descontos fora do plantão ÷ adesões realizadas da equipe no mês · acima de 30% = R$ 16,00 · de 20% a 30% = R$ 16,50 · de 10% a 20% = R$ 17,00 · abaixo de 10% = R$ 18,00 (só com mínimo de 15 vendas e ticket médio de R$ 225,00; senão R$ 17,00) · Exodus Benefícios não entra</p>
+        <div class="tscroll" id="dsRec"></div>
+      </article>
+      <article class="chart-card">
+        <h3 id="dsListT">Adesões da equipe e descontos</h3>
+        <p class="chart-src" id="dsListS"></p>
+        <div class="seg vf" id="dsFilt" role="group" aria-label="Filtrar adesões"></div>
+        <div class="cp-fbar" id="dsFbar"><span></span><button type="button" class="btn sm" hidden>Limpar filtros e classificação</button></div>
+        <div class="tscroll" id="dsList"></div>
+      </article>
+      <p class="legend" id="dsUpd"></p>
+    </div>
+    <div id="cpView" hidden>
+      <div class="evo-head">
+        <div>
+          <h2 id="cpTitle">Comprovante de adesões</h2>
+          <p class="legend" id="cpSub"></p>
+        </div>
+        <div class="evo-filters">
+          <select class="field" id="cpTeam" hidden aria-label="Equipe"></select>
+          <select class="field" id="cpEsp" aria-label="Especialista"></select>
+          <select class="field" id="cpMes" aria-label="Mês"></select>
+          <button type="button" class="btn sm pdfb" data-pdf="cp"><svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M5 2h7l4 4v12H5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 2v4h4M10 9v6M7.5 12.5 10 15l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Emitir PDF do resumo</button>
+        </div>
+      </div>
+      <div class="stats" id="cpStats"></div>
+      <article class="chart-card">
+        <h3>Resumo por especialista</h3>
+        <p class="chart-src" id="cpResS"></p>
+        <div class="tscroll" id="cpRes"></div>
+      </article>
+      <article class="chart-card">
+        <h3 id="cpListT">Adesões do mês</h3>
+        <p class="chart-src" id="cpListS"></p>
+        <div class="cleg" id="cpLeg"><span><i class="w"></i>Sem comprovante</span><span><i class="y"></i>Comprovante anexado: só confirma que o arquivo chegou (o sistema verifica de hora em hora; quem anexou já vê na hora)</span><span><i class="b">Aa</i>Valor conferido: o sistema leu o comprovante e confirmou o valor (na atualização completa, 2 vezes ao dia, ou quando o coordenador atualiza)</span><span><i class="g">Aa</i>Baixa dada pelo financeiro (validado)</span></div>
+        <p class="legend" id="cpRegra"><b>Valor que entra na soma e no "a receber":</b> o valor do comprovante. Se o valor informado pelo especialista for diferente, vale o valor encontrado no comprovante (conferido na atualização completa).</p>
+        <div class="cp-fbar"><span id="cpFInfo"></span><button type="button" class="btn sm" id="cpClrF" hidden>Limpar filtros e classificação</button></div>
+        <div class="cp-bulk" id="cpBulk" hidden>
+          <b id="cpSelInfo">Marque as adesões na primeira coluna para lançar o pagamento ou validar várias de uma vez.</b>
+          <label for="cpBkV">Valor pago total (R$)<input class="field" id="cpBkV" inputmode="decimal" placeholder="opcional"></label>
+          <label for="cpBkO">Observação<input class="field" id="cpBkO" placeholder="Ex.: Pix acumulado 16/10"></label>
+          <button type="button" class="btn sm" id="cpBkPg" disabled>Lançar como pago</button>
+          <button type="button" class="btn sm wa" id="cpBkOk" disabled>Validar selecionadas</button>
+          <button type="button" class="btn sm" id="cpBkNo" disabled>Retirar validação</button>
+          <button type="button" class="btn sm" id="cpBkClr" disabled>Limpar seleção</button>
+        </div>
+        <div class="tscroll" id="cpList"></div>
+      </article>
+      <p class="legend" id="cpUpd"></p>
+    </div>
+    <div id="rtView" hidden>
+      <div class="evo-head">
+        <div>
+          <h2>Reativação · prints de contato</h2>
+          <p class="legend">Anexe o print da conversa em que você chamou o associado que estava devendo para pagar. Promoção só para os líderes: conta para a sua meta quando o associado é da sua equipe e está na lista de reativação do mês. Reativou: entra nas suas adesões. Pagou também o boleto do mês seguinte: vira adesão validada.</p>
+        </div>
+      </div>
+      <article class="chart-card" id="rtSend">
+        <h3>Enviar prints</h3>
+        <div class="rt-form">
+          <label for="rtMes">Lista de reativação
+            <select class="field" id="rtMes"></select>
+          </label>
+          <label for="rtEsp" id="rtEspL" hidden>Especialista
+            <select class="field" id="rtEsp"></select>
+          </label>
+          <label class="rt-file" for="rtFile">
+            <input id="rtFile" type="file" accept="image/*" multiple>
+            <span><b>Escolher prints</b><small>Pode selecionar vários de uma vez (imagens do WhatsApp)</small></span>
+          </label>
+          <button class="primary" id="rtGo" type="button" disabled>Enviar prints</button>
+        </div>
+        <div class="rt-gas" id="rtGasBox" hidden>
+          <a class="btn wa" id="rtGas" href="#" target="_blank" rel="noopener">Enviar prints pela página da Exodus (sem login)</a>
+          <span class="legend">Abre uma página segura só sua, já com o seu nome. Os prints vão direto para a pasta da coordenação.</span>
+        </div>
+        <div class="rt-prev" id="rtPrev"></div>
+        <p class="legend" id="rtMsg" role="status"></p>
+      </article>
+      <article class="chart-card">
+        <h3 id="rtListT">Prints enviados</h3>
+        <p class="chart-src" id="rtListS"></p>
+        <div class="evo-filters rt-filt" id="rtFilt" hidden>
+          <select class="field" id="rtFEsp" aria-label="Líder"></select>
+          <select class="field" id="rtFMes" aria-label="Mês"></select>
+        </div>
+        <div class="rt-grid" id="rtList"></div>
+      </article>
+    </div>
+  </div>
+</section>
+<div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script id="vault" type="application/json">{}</script>
+<script id="evo" type="application/json">{}</script>
+<script id="rtcfg" type="application/json">__RTCFG__</script>
+<script id="motivos" type="application/json">__MOTIVOS__</script>
+</body>
+</html>

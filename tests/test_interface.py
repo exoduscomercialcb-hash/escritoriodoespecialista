@@ -74,7 +74,9 @@ def _pagina(navegador, largura=1300):
     erros: list[str] = []
     pg.on("pageerror", lambda e: erros.append(str(e)))
     # 400 = recusa esperada de uma regra (o teste digita um CPF que não tem cadastro)
-    pg.on("console", lambda m: erros.append(m.text) if m.type == "error" and "status of 400" not in m.text else None)
+    # ignorados: 400 (recusa esperada de uma regra) e ERR_FAILED (o teste corta a internet: fontes do Google)
+    pg.on("console", lambda m: erros.append(m.text) if m.type == "error" and "status of 400" not in m.text
+          and "net::ERR_FAILED" not in m.text else None)
     pg.route("https://**/*", lambda r: r.abort())  # nada sai da máquina durante o teste
     return ctx, pg, erros
 
@@ -108,15 +110,18 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     adm.goto(servidor + f"/teste/entrar?email={ADMIN}&nome=Admin%20Teste")
 
     # menu principal com o card do painel e o lugar do botão "Atualizar meus dados"
+    # quem entra cai nos cards (a página atual); sem dados importados, aparece o aviso
+    expect(adm).to_have_url(servidor + "/escritorio")
     expect(adm.locator("#hName")).to_have_text("Admin Teste")
-    expect(adm.locator('#home [data-go="adm"] h3')).to_have_text("Painel do administrador")
-    expect(adm.locator("#btnAtualizar")).to_be_disabled()
-    expect(adm.locator("#updTexto")).to_contain_text("Pode usar 1 vez a cada 15 minutos")
-    expect(adm.locator("#pfs-adm")).to_have_text("1 pessoa aguardando 1º acesso")  # o líder do teste nunca entrou
+    expect(adm.locator(".aviso-dados")).to_contain_text("ainda não foram carregados")
+    painel = adm.locator('#home a[data-painel="1"]')
+    expect(painel.locator("h3")).to_have_text("Painel do administrador")
 
     # o admin importa a planilha (colada do Excel) e faz um cadastro avulso
-    adm.click('#home [data-go="adm"]')
+    painel.click()
     expect(adm.locator("#adminView")).to_be_visible()
+    expect(adm.locator("#btnAtualizar")).to_be_disabled()
+    expect(adm.locator("#updTexto")).to_contain_text("Pode usar 1 vez a cada 15 minutos")
     cpf_esp, cpf_cad = cpf_inventado(501), cpf_inventado(502)
     adm.click("#boxImportar summary")
     adm.fill("#impTexto", "Nome\tTipo de conta\tCPF\tEquipe\tNome no SGA\tLíder\n"
@@ -146,9 +151,10 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     # volta do Google (aqui, login de teste) já com acesso
     pg.goto(servidor + "/teste/entrar?email=especialista.novo@exemplo.com.br&nome=Nome%20Google")
     expect(pg.locator("#hName")).to_have_text("Especialista Novo Inventado")
-    expect(pg.locator("#hWho")).to_have_text("Especialista · Equipe Elite")
-    expect(pg.locator("#homeVazio")).to_be_visible()
-    assert pg.locator('#home [data-go="adm"]').count() == 0
+    expect(pg.locator("#hWho")).to_contain_text("Equipe Elite")
+    expect(pg).to_have_url(servidor + "/escritorio")
+    expect(pg.locator(".aviso-dados")).to_contain_text("Fale com a coordenação")
+    assert pg.locator('#home a[data-painel="1"]').count() == 0  # especialista não vê o painel
     assert _sem_rolagem_lateral(pg)
     assert not erros, erros
     ctx.close()
@@ -185,7 +191,8 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
     adm.click("#acsForm button[type=submit]")
     expect(adm.locator("#acsResumo tbody tr")).to_have_count(1)
 
-    adm.click("#btnHome")
-    expect(adm.locator("#home")).to_be_visible()
+    adm.click("#btnHome")  # "Menu principal" do painel volta para os cards
+    expect(adm).to_have_url(servidor + "/escritorio")
+    expect(adm.locator('#home a[data-painel="1"]')).to_be_visible()
     assert not erros_adm, erros_adm
     adm_ctx.close()
