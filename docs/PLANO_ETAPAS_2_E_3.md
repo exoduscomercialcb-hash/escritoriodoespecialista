@@ -56,8 +56,10 @@ Cole o texto abaixo na conversa do Claude que cuida do Escritório atual (a que 
 > - `gerado_em`: data e hora.
 > - `evo`: o bloco `evo` da página atual **descriptografado**: `all` (objeto inteiro), `t` (objeto de cada líder, com a
 >   chave = equipe, por exemplo `"LUA"`) e `e` (objeto de cada especialista, com a chave = o `nome` do `spec_keys.json`).
-> - `especialistas`: para cada item do `spec_keys.json`: `nome`, `sga` (lista de nomes no SGA), `eqs`, `carteira`,
->   `ld` (se tiver) e `rows` (a lista do remarketing dele, descriptografada do `vault`). Sem as chaves (`k`) e sem senhas.
+> - `especialistas`: para cada item do `spec_keys.json`: `id`, `nome`, `sga` (lista de nomes no SGA), `eqs`, `carteira`,
+>   `rot`, `ld` (se tiver) e `rows` (a lista do remarketing dele, descriptografada do `vault`). Sem as chaves (`k`) e
+>   sem senhas.
+> - `comp_registro`: o conteúdo do `comp_registro.json` (registro dos comprovantes enviados), como está.
 > - `motivos` e `rtcfg`: os blocos da página, descriptografados se forem criptografados.
 > - `banco`: o conteúdo atual das coleções do banco da página, no formato `{coleção: {id do documento: dados}}`:
 >   `enviados`, `comp` (todos os documentos, inclusive `regras`), `compconf`, `reativ` e `cancenv`.

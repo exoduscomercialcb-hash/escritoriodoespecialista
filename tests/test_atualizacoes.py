@@ -139,3 +139,14 @@ def test_painel_de_atualizacoes(admin, novo_cliente, db):
     entrar(c, "sem@exemplo.com.br")
     assert c.get("/api/admin/atualizacoes").status_code == 403
     assert c.post("/api/admin/atualizacoes/testar", json={}).status_code == 403
+
+
+def test_consulta_get_do_sga():
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json=[{"codigo": "1", "descricao": "Inadimplência"}]),
+                     httpx2.Response(404), httpx2.Response(403, text="BLOQUEADO"))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=lambda _s: None)
+    assert c.get("/listar/situacaomotivo/ativo") == [{"codigo": "1", "descricao": "Inadimplência"}]
+    assert c.get("/veiculo/buscar/123/codigo") is None
+    with pytest.raises(SGABloqueado):
+        c.get("/veiculo/buscar/456/codigo")
+    assert falso.pedidos[1].method == "GET"

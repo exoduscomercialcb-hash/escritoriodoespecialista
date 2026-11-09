@@ -93,5 +93,35 @@ class ClienteSGA:
             self.espera(5 * (tentativa + 1))
         raise SGAErro(f"o SGA não respondeu em {caminho} depois de 3 tentativas")
 
+    def get(self, caminho: str):
+        """Consulta por GET (motivos, detalhes de um veículo). Devolve o JSON; None se o SGA disser que não achou."""
+        if self._cabecalho is None:
+            self.autenticar()
+        recusas = 0
+        for tentativa in range(3):
+            self._contar()
+            try:
+                r = self.http.get(caminho, headers=self._cabecalho)
+            except httpx2.HTTPError:
+                self.espera(5 * (tentativa + 1))
+                continue
+            if _bloqueado(r):
+                raise SGABloqueado(f"o SGA respondeu BLOQUEADO em {caminho.split('/')[1] if '/' in caminho else caminho}")
+            if r.status_code in (401, 403):
+                recusas += 1
+                if recusas >= 2:
+                    raise SGABloqueado("o SGA recusou o acesso duas vezes seguidas")
+                self.autenticar()
+                continue
+            if r.status_code in (404, 406):
+                return None
+            if r.is_success:
+                try:
+                    return r.json()
+                except ValueError:
+                    pass
+            self.espera(5 * (tentativa + 1))
+        raise SGAErro("o SGA não respondeu a uma consulta depois de 3 tentativas")
+
     def fechar(self) -> None:
         self.http.close()

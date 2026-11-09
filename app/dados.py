@@ -65,11 +65,12 @@ def importar_sistema_atual(db: Session, exp) -> dict:
         nome = N(x["nome"])
         rows = x.get("rows") or []
         linhas += len(rows)
-        guardar(db, "esp:" + nome, {"nome": x["nome"], "sga": [N(s) for s in (x.get("sga") or [])],
-                                    "eqs": x.get("eqs") or [], "carteira": x.get("carteira"), "ld": x.get("ld")},
-                "importacao")
+        # como o especialista está no spec_keys.json do Kit (sem a chave "k"): a busca automática usa id, ld e rot
+        guardar(db, "esp:" + nome, {"id": x.get("id"), "nome": x["nome"], "sga": [N(s) for s in (x.get("sga") or [])],
+                                    "eqs": x.get("eqs") or [], "carteira": x.get("carteira"), "rot": x.get("rot") or "",
+                                    "ld": x.get("ld")}, "importacao")
         guardar(db, "rm:" + nome, rows, "importacao")
-    for bloco in ("motivos", "rtcfg"):
+    for bloco in ("motivos", "rtcfg", "comp_registro"):
         if exp.get(bloco) is not None:
             guardar(db, bloco, exp[bloco], "importacao")
     marcacoes = importar_colecoes(db, exp.get("banco") or {})
