@@ -20,6 +20,7 @@ from sqlalchemy.exc import OperationalError
 from starlette.middleware.sessions import SessionMiddleware
 
 from .atualizacoes import teste_de_partida
+from .busca.completa import agendador
 from .config import Config, carregar
 from .db import criar_engine, descrever_banco, fabrica_de_sessoes, iniciar_banco, motivo_da_falha
 from .hosts import NEUTRA, pagina_do_host
@@ -85,7 +86,12 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
             raise RuntimeError("Banco de dados indisponível. Veja a mensagem acima.") from None
         if cfg.testar_na_partida:  # em outra linha de execução: o servidor não espera o SGA para ficar no ar
             threading.Thread(target=teste_de_partida, args=(app.state.Sessao, cfg), daemon=True).start()
+        parar = threading.Event()
+        if cfg.busca_automatica:
+            threading.Thread(target=agendador, args=(app.state.Sessao, cfg, parar), daemon=True,
+                             name="agendador-da-busca").start()
         yield
+        parar.set()
         engine.dispose()
 
     app = FastAPI(title="Escritório do Especialista", docs_url=None, redoc_url=None, openapi_url=None,

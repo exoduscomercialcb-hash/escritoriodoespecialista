@@ -71,6 +71,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | `app/dados.py` | Importação dos dados do sistema atual e o pacote de cada pessoa (geral, equipe ou especialista). |
 | `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
 | `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA e do Power CRM (somente leitura), trava do SGA, registro das buscas, teste de conexão. |
+| `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, grava os pacotes e agenda (03:52; `BUSCA_AUTOMATICA=0` desliga). |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 
 ### Como o acesso funciona hoje (decisões de 08/11)

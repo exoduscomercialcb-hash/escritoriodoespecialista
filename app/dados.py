@@ -54,7 +54,8 @@ def importar_sistema_atual(db: Session, exp) -> dict:
     if not isinstance(especialistas, list) or not all(isinstance(x, dict) and x.get("nome") for x in especialistas):
         raise ErroRegra("Arquivo fora do formato: especialistas precisa ser uma lista com nome.")
 
-    db.execute(delete(Pacote).where(Pacote.origem == "importacao"))
+    # a importação recomeça do zero: apaga também o que a busca automática gravou depois da importação anterior
+    db.execute(delete(Pacote).where(Pacote.origem.in_(("importacao", "busca"))))
     guardar(db, "all", evo["all"], "importacao")
     for equipe, obj in (evo.get("t") or {}).items():
         guardar(db, "t:" + N(equipe), obj, "importacao")
@@ -153,6 +154,8 @@ def pacote_da_pessoa(db: Session, p: Pessoa) -> dict:
     else:
         nome = _especialista_da_pessoa(db, p)
         specs = [_lista(db, nome)] if nome else []
+    busca = ler(db, "busca") or {}
     info = ler(db, "importacao") or {}
     return {"perfil": perfil, "pacote": ler(db, chave) if chave else None, "specs": specs,
-            "motivos": ler(db, "motivos"), "rtcfg": ler(db, "rtcfg"), "dados_de": info.get("gerado_em")}
+            "motivos": ler(db, "motivos"), "rtcfg": ler(db, "rtcfg"),
+            "dados_de": busca.get("feita_em") or info.get("gerado_em")}

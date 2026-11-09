@@ -95,6 +95,7 @@ class Config:
     sga_senha: str = ""
     powercrm_token: str = ""
     testar_na_partida: bool = False  # testa SGA e Power CRM quando o servidor liga (só no Render)
+    busca_automatica: bool = False  # busca completa diária às 03:52 (só no Render; BUSCA_AUTOMATICA=0 desliga)
     extras: dict = field(default_factory=dict)
 
     @property
@@ -150,4 +151,6 @@ def carregar(env: dict | None = None) -> Config:
         sga_senha=env.get("SGA_SENHA", "").strip(),
         powercrm_token=env.get("POWERCRM_TOKEN", "").strip(),
         testar_na_partida=em_producao,
+        busca_automatica=em_producao and (env.get("BUSCA_AUTOMATICA") or "1").strip().lower() not in {
+            "0", "nao", "não", "false", "off"},
     )

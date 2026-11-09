@@ -79,6 +79,9 @@ def test_config_render_inclui_endereco_onrender_e_tira_localhost():
     assert cfg.modo_teste is False  # no Render a rota de teste nunca liga
     assert cfg.cookie_seguro is True
     assert cfg.database_url.startswith("postgresql+psycopg://")
+    assert cfg.busca_automatica is True  # no Render a busca diária liga sozinha
+    assert carregar({**env, "BUSCA_AUTOMATICA": "0"}).busca_automatica is False  # e desliga pela variável
+    assert carregar({}).busca_automatica is False  # no computador, nunca
 
 
 def test_config_render_recusa_variavel_faltando():
