@@ -155,3 +155,24 @@ def test_consulta_get_do_sga():
     with pytest.raises(SGABloqueado):
         c.get("/veiculo/buscar/456/codigo")
     assert falso.pedidos[1].method == "GET"
+
+
+def test_bloqueio_para_a_consulta_que_esperava_nova_tentativa():
+    """Busca em paralelo: a consulta A falha na rede e espera; nesse meio tempo a B recebe BLOQUEADO.
+    A A não pode tentar de novo (revisão do PR #5)."""
+    falso = SGAFalso(LOGIN_OK, httpx2.ConnectTimeout("rede"), httpx2.Response(403, text="BLOQUEADO"))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente())
+
+    def enquanto_a_espera(_segundos):
+        with pytest.raises(SGABloqueado):
+            c.post("/listar/veiculo", {"b": 1})
+
+    c.espera = enquanto_a_espera
+    with pytest.raises(SGABloqueado, match="BLOQUEADO"):
+        c.post("/listar/veiculo", {"a": 1})
+    assert len(falso.pedidos) == 3  # login, 1ª tentativa da A e a B; nada depois do bloqueio
+    with pytest.raises(SGABloqueado):  # nem login novo nem GET saem depois disso
+        c.autenticar()
+    with pytest.raises(SGABloqueado):
+        c.get("/veiculo/buscar/1/codigo")
+    assert len(falso.pedidos) == 3
