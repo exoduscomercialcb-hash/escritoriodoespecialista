@@ -16,6 +16,9 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   Claude que tem o Kit e importar em Painel > Atualizações > Dados do sistema atual.
 - **Parte 2.3 (busca automática)** pronta no PR da branch `etapa-2-busca`, esperando a aprovação do Rafael. Depois de
   aprovada, roda sozinha às 03:52 (só se os dados do sistema atual já tiverem sido importados) e pelo botão do painel.
+- **09/11:** cópias do sistema atual atualizadas (eram de 07/11): regra da adesão do liderado no nome do líder
+  (`app/busca/liderado.py`), plantão sem placa (chassi ou nome) e séries sempre com `base[]`. A busca das 03:52 já
+  roda com elas.
 - **Próximo:** parte 2.4, o botão "Atualizar meus dados". Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa
@@ -109,7 +112,7 @@ como P0/P1 só o que expõe dado ou acesso de verdade; estilo e preferência, no
 | `app/dados.py` | Importação dos dados do sistema atual e o pacote de cada pessoa (geral, equipe ou especialista). |
 | `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
 | `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA e do Power CRM (somente leitura), trava do SGA, registro das buscas, teste de conexão. |
-| `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, grava os pacotes e agenda (03:52; `BUSCA_AUTOMATICA=0` desliga). |
+| `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, aplica a regra do liderado (`liderado.py`, porta do `liderado_pc.py`), grava os pacotes e agenda (03:52; `BUSCA_AUTOMATICA=0` desliga). |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 
 ### Como o acesso funciona hoje (decisões de 08/11)
@@ -162,6 +165,7 @@ Erros do sistema atual (artefato no Claude): `docs/MANUAL_SISTEMA_ATUAL.md`, se�
 | 08/11 | Rafael informou o CPF de master, entrou com a conta rafaelveiga.exodus e viu "acesso não liberado" | O CPF de master está ligado à conta exoduscomercialcb; a outra conta tinha um cadastro de líder pendente que sobrou de teste | As duas contas em `ADMIN_EMAILS`; a tela diz com qual conta Google o CPF entra (e-mail parcialmente escondido) | `test_cpf_de_outra_conta_mostra_qual_conta_usar` |
 | 09/11 | (pego antes de publicar) No script adaptado, "nenhum boleto" do SGA virava "erro SGA" e página do Power CRM sem `items` parava a busca de descontos | Os clientes de `app/fontes/` só aceitavam o 406 "encontrad" e exigiam `items`; o script atual aceitava 404/406 "nenhum" e `items` ausente como "sem resultado" | Clientes iguais ao script nesses dois casos. Regra: ao trocar um pedaço de I/O do script, comparar o tratamento de cada código de resposta | `test_consultas_do_sga_renovam_o_login_e_param_no_segundo_recusado`, `test_teste_do_powercrm` |
 | 09/11 | (apontado na revisão do PR #5) Na busca em paralelo, depois de um BLOQUEADO, uma consulta que estava esperando para tentar de novo ainda chamava o SGA | A trava só era conferida na entrada de cada consulta, não antes de cada nova tentativa e da renovação do login | O cliente do SGA guarda o bloqueio e confere antes de toda chamada (`ClienteSGA.bloqueio`) | `test_bloqueio_para_a_consulta_que_esperava_nova_tentativa` |
+| 09/11 | (pego antes da busca das 03:52) As cópias do sistema atual no projeto eram de 07/11: a busca automática gravaria por cima dos dados importados sem a regra do liderado (09/11), sem o plantão sem placa e podia deixar série sem `base[]` | Mudanças feitas no Kit depois da cópia não vieram para o projeto | Porta do `liderado_pc.py` em `app/busca/liderado.py` (se o Power CRM falhar, mantém o que a busca anterior já tinha movido), `plt_()` com chassi e nome, `referencia/` atualizada. Regra: toda mudança no script do Kit vem para `app/busca/` e `referencia/` no mesmo dia, até a virada de chave | `tests/test_busca_liderado.py` |
 
 ### Armadilhas de configuração (não são erros do código)
 

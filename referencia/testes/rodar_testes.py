@@ -93,6 +93,14 @@ async def main():
                  for (const i of [d.val_ate, d.val_ate + 1]) { const m = d.meses_ad[i]; if (!m) continue; out.push([m, s.ad[i], d.ades.filter(a => a.m === m).length, (s.vb || s.va)[i] - s.va[i] === ((s.rv || [])[i] || 0)]); }
                  return out; })()""")
             ok("T16 adesões do mês sem reativações (bate com a lista do SGA) e bônus com reativações", len(r) > 0 and all(x[1] == x[2] and x[3] for x in r), r)
+            # T17 — adesão no nome do líder no SGA e vendida por liderado (afiliado no Power CRM) conta para o liderado (09/11).
+            # (No Kit, o teste confere um liderado e duas placas reais; aqui, sem dados pessoais: a regra vale para todas as equipes.)
+            r = await pg.evaluate("""(()=>{ const d = window.__teste.E.data, s = d.series, out = [];
+                 const mv = d.ades.filter(a => a.esp_sga);
+                 for (const t of Object.keys(d.leaders || {})) { const z = s[t + '|propria'], l = s[t + '|liderados'], e = s[t + '|equipe'];
+                   if (z && l && e) d.meses_ad.forEach((m, i) => out.push(z.ad[i] + l.ad[i] === e.ad[i])); }
+                 return [mv.length, mv.every(a => a.esp !== a.esp_sga), out.every(x => x)]; })()""")
+            ok("T17 adesão do liderado cadastrada no nome do líder conta para o liderado (Minha base + Liderados = equipe)", r[1] and r[2], r)
             # T7 — adesões validadas: legenda e linhas azuis
             await abre(pg, "va")
             ok("T7 legenda das adesões validadas", await pg.evaluate("!!document.getElementById('vaLeg')"))
@@ -112,6 +120,13 @@ async def main():
             pg, errs = await entra(b, "RODRIGO VENANCIO")
             nome = await pg.evaluate("document.getElementById('hName').textContent")
             ok("T14 Rodrigo Venâncio entra com o próprio nome", "Ven" in nome and "Luiz" not in nome, nome); ok("T14 sem erro de JavaScript · Rodrigo Venâncio", not errs, errs[:2]); await pg.close()
+        # T18 — painel de cada líder abre sem erro e com dados (09/11: série de liderado sem base[] travou o painel de vários líderes).
+        # No Kit, a lista são os logins dos líderes; aqui, todo login do arquivo de senhas que não seja de coordenação, cadastro ou especialista dos testes acima.
+        for lu in [u for u in PW if u not in ("COORDENACAO", "CADASTRO", "NALVA MEIRELES", "GILMAR GOMES", "RODRIGO VENANCIO", "RODRIGO MORAES")]:
+            pg, errs = await entra(b, lu)
+            await abre(pg, "cp")
+            n = await pg.evaluate("(()=>{ const d = window.__teste.E.data; return [Object.values(d.series).every(s => Array.isArray(s.base)), d.ades.length]; })()")
+            ok("T18 painel do líder abre sem erro e com adesões · " + lu, not errs and n[0] and n[1] > 0, [n, errs[:1]]); await pg.close()
         # T11 — o visual do menu precisa sobreviver à publicação (bug 01/11: CSS ficou no <head> do esqueleto e a publicação apagou)
         if "COORDENACAO" in PW:
             import tempfile, re as _re

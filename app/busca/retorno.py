@@ -362,7 +362,13 @@ def rodar(entrada: Entrada) -> Saida:
     PLANTAO = {"2026-09": [("2026-09-26", "2026-09-30")]}   # meses sem regra informada = tudo fora do plantão
     try: REGRAS = (entrada.comp_marks or {}).get("regras") or {}   # lista do coordenador por placa: plt = desconto conta como plantão; nc/obs = instalação não cobrada (ADAPTAÇÃO: comp_marks.json -> entrada.comp_marks)
     except Exception: REGRAS = {}
-    def plt_(x): return bool((REGRAS.get(pl_(x.get("placa"))) or {}).get("plt"))
+    def plt_(x):   # lista do coordenador: plantão por placa; sem placa, pelo chassi ou NOME:<nome> (plantão 30-31/10/2026 tinha veículos sem placa)
+        # ADAPTAÇÃO: o Kit lia DET por globals(); aqui DET é variável desta função (definida antes)
+        de = DET.get(str(x.get("codigo_veiculo"))) or {}
+        nm = N(x.get("nome") or x.get("nome_associado") or de.get("nome") or de.get("nome_associado"))
+        for kk in (pl_(x.get("placa")), pl_(x.get("chassi") or de.get("chassi")), "NOME:" + nm if nm else ""):
+            if kk and (REGRAS.get(kk) or {}).get("plt"): return True
+        return False
     DESDE = "2026-09"
     DESC = OLD.get("desc") or {"d": {}, "tk": {}}
     QM = {}
@@ -372,6 +378,7 @@ def rodar(entrada: Entrada) -> Saida:
     VIMAP = dict(OLD.get("vimap") or {})            # veículo da carteira -> vendedor no Power CRM ("" = sem cotação)
     ATVD_CV = {str(x["codigo_veiculo"]) for x in ATV}
     dlive = [k for k in LIVE if k >= DESDE]
+    COT = None   # ADAPTAÇÃO: as cotações vão na Saida para a regra do liderado (app/busca/liderado.py); None = Power CRM falhou
     try:
         # ADAPTAÇÃO: POWERCRM.txt, PT, PH e as tentativas de pc_page -> entrada.powercrm.pagina (o cliente tenta de novo e levanta
         # erro se desistir). Sem token (entrada.powercrm None), segue o mesmo caminho de quando o Power CRM falha (o except abaixo).
@@ -470,6 +477,7 @@ def rodar(entrada: Entrada) -> Saida:
             log("  carteira das vendedoras internas:", collections.Counter(VIMAP.values()).most_common(6))
     except Exception as e_:
         log("AVISO: descontos não recalculados (mantidos os anteriores):", type(e_).__name__, e_)
+        COT = None   # ADAPTAÇÃO: cotações pela metade não servem para a regra do liderado (ela usa as adesões já movidas antes)
 
     # ---------- lista de todas as adesões dos meses abertos (abas Adesões validadas e Descontos) ----------
     def tc2(x): return " ".join(w if w.lower() in ("de", "da", "do", "dos", "das", "e") else w.capitalize() for w in str(x or "").lower().split())
@@ -869,5 +877,5 @@ def rodar(entrada: Entrada) -> Saida:
     out["all"] = enc(None, vi_all(cart_all(dict(META, notif_vistos=NOTIF_VISTOS, notif_vistos_coord=NOTIF_VISTOS_C, div_ex=DIVEX, vi_hist=VIH, desc_vi=DESCVI, vimap=VIMAP, nomes=NOMES, leaders={t: n for t, (_, n, _) in LEAD.items()}, teams=sorted(NOMES, key=lambda t: NOMES[t]), series=SERIES, canc=CANC, vesp=VESP, lidb=LIDB, pend=PEND, desc=DESC, reat=REAT, ades=ADES,
                                   det={k: v for k, v in DET.items() if k in {str(c) for c in cd} or k in {str(x["codigo_veiculo"]) for k_ in LIVE for x in ATIV[k_]}}, vcache=VC), lambda n_: (TEAMOF[n_].most_common(1) or [("", 0)])[0][0], LDALL), LDALL))
     # ADAPTAÇÃO: em vez de gravar a página e imprimir o resumo, devolve os pacotes e o resumo
-    return Saida(pacotes=out, novos_cancelados=NOVOS_SAIDA,
+    return Saida(pacotes=out, novos_cancelados=NOVOS_SAIDA, cotacoes=list(COT.values()) if COT else None,
                  resumo={"atualizado": META["atualizado"], "base_hoje": len(ATV), "cancelados_recentes": len(CANC), "bi": BI_OK})

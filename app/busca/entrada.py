@@ -34,3 +34,4 @@ class Saida:
     pacotes: dict[str, Any]  # "all", "t:<EQUIPE>", "e:<NOME>" (chaves com app.dados.N)
     novos_cancelados: dict = field(default_factory=dict)  # para os e-mails aos líderes (etapa 5)
     resumo: dict = field(default_factory=dict)  # atualizado, base_hoje, cancelados_recentes, bi
+    cotacoes: list | None = None  # cotações do Power CRM que o script leu (regra do liderado); None = Power CRM falhou

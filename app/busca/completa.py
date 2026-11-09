@@ -26,6 +26,7 @@ from ..fontes.powercrm import ClientePowerCRM, PowerCRMErro
 from ..fontes.sga import ClienteSGA, SGABloqueado, SGAErro
 from ..tempo import agora, formatar, utc
 from .entrada import Entrada, ErroBusca, Saida
+from .liderado import aplicar as aplicar_liderados
 
 log = logging.getLogger("escritorio")
 
@@ -154,7 +155,11 @@ def busca_completa(Sessao, cfg: Config, *, tipo: str = "agendada", pessoa_id: in
             try:
                 if rodar is None:
                     from .retorno import rodar  # o script adaptado (pesado): só carrega quando a busca roda
-                saida = rodar(montar_entrada(db, sga=sga, powercrm=powercrm, http_bi=http_bi))
+                entrada = montar_entrada(db, sga=sga, powercrm=powercrm, http_bi=http_bi)
+                saida = rodar(entrada)
+                # regra do liderado (09/11): como o liderado_pc.py, que o sistema atual roda logo depois do script
+                lid = aplicar_liderados(saida.pacotes or {}, saida.cotacoes, entrada.old, entrada.especialistas)
+                log.info("busca: liderados %s", lid)
                 gravados = gravar_saida(db, saida, inicio)
                 return concluir(db, a, True, _resumo_txt(saida, gravados))
             except SGABloqueado as e:
