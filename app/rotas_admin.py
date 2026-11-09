@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .atualizacoes import painel as painel_de_atualizacoes
 from .atualizacoes import testar_powercrm, testar_sga
+from .busca.completa import motivo_para_nao_rodar, rodar_em_segundo_plano
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
 from .dados import importar_sistema_atual, resumo_da_importacao
@@ -133,8 +134,23 @@ async def importar_do_sistema_atual(request: Request, db: Session = Depends(banc
 
 
 @rotas_admin.get("/atualizacoes")
-def ver_atualizacoes(db: Session = Depends(banco)):
-    return painel_de_atualizacoes(db)
+def ver_atualizacoes(request: Request, db: Session = Depends(banco)):
+    r = painel_de_atualizacoes(db)
+    r["busca_automatica"] = config(request).busca_automatica
+    return r
+
+
+@rotas_admin.post("/atualizacoes/busca", dependencies=[Depends(exige_json)])
+def rodar_busca_agora(request: Request, db: Session = Depends(banco), quem: Pessoa = Depends(exige_painel)):
+    """Busca completa fora do horário (só o administrador). Roda em segundo plano; o resultado vai para o histórico."""
+    if quem.tipo != "admin":
+        raise HTTPException(403, "Só o administrador roda a busca completa.")
+    cfg = config(request)
+    motivo = motivo_para_nao_rodar(db, cfg)
+    if motivo is not None:
+        return {"ok": False, "mensagem": motivo}
+    rodar_em_segundo_plano(request.app.state.Sessao, cfg, tipo="manual", pessoa_id=quem.id)
+    return {"ok": True, "mensagem": "Busca iniciada. Leva alguns minutos; o resultado aparece no histórico abaixo."}
 
 
 @rotas_admin.post("/atualizacoes/testar", dependencies=[Depends(exige_json)])

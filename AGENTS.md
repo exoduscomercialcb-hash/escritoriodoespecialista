@@ -6,17 +6,17 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 
 ## Onde estamos (atualize esta seção a cada entrega)
 
-- **Etapa 1 concluída e no ar** em https://escritorio-do-especialista.onrender.com (PR #1 aprovado em 08/11).
-  O Render publica a `main`, só depois dos testes passarem ("After CI Checks Pass").
-- **Etapa 2 em andamento** na branch `etapa-2-sincronizacao`: o servidor busca SGA, Power CRM e BI sozinho
-  (seção 3 e etapa 2 da seção 10 de `docs/ESPECIFICACAO.md`). Enquanto o sistema atual estiver no ar, a busca completa
-  do SGA roda **1 vez por dia, de madrugada** (os dois sistemas usam o mesmo token, que já foi bloqueado por excesso).
-- **Pendente do Rafael:** "Verify" do domínio `escritorio.exodusbeneficios.com.br` no Render; cadastrar no Render
-  `SGA_TOKEN`, `SGA_USUARIO`, `SGA_SENHA` e `POWERCRM_TOKEN`; exportar do sistema atual o que só existe na página
-  (histórico dos meses fechados, lista do remarketing, marcações e reativações).
-- **Depois:** etapa 3, os cards (as 6 telas de hoje lendo da API).
-- **Plano detalhado e ordem das partes:** `docs/PLANO_ETAPAS_2_E_3.md` (reaproveitar o script e a página atuais; o texto
-  para pedir a exportação ao Claude que tem o Kit está lá).
+- **No ar** em https://escritorio.exodusbeneficios.com.br (e no endereço `.onrender.com`), publicando a `main` só
+  depois dos testes ("After CI Checks Pass"). PRs #1 a #4 aprovados em 08/11.
+- **Etapa 1** concluída: login com Google, cadastro pela coordenação, entrada com CPF + WhatsApp, painel do
+  administrador (Cadastros, Acessos, Atualizações).
+- **Etapa 2, parte 1** no ar: trava do SGA, registro das buscas e teste de conexão. **Teste de 08/11, 02:33: SGA e
+  Power CRM conectaram.**
+- **Cards (partes 2.2, 3.1 e 3.2)** no ar em `/escritorio`, ainda **sem dados**: falta o Rafael pedir a exportação ao
+  Claude que tem o Kit e importar em Painel > Atualizações > Dados do sistema atual.
+- **Parte 2.3 (busca automática)** pronta no PR da branch `etapa-2-busca`, esperando a aprovação do Rafael. Depois de
+  aprovada, roda sozinha às 03:52 (só se os dados do sistema atual já tiverem sido importados) e pelo botão do painel.
+- **Próximo:** parte 2.4, o botão "Atualizar meus dados". Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa
 
@@ -43,6 +43,43 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | A página dos cards foi gerada uma vez (08/11) da página atual por `scripts/gerar_pagina_cards.py`. Daqui em diante, edite `app/static/cards.js` e `cards.css` direto; não rode o gerador de novo (ele apagaria as edições). | O gerador fica só como registro do que foi trocado. |
 | Para **apagar coluna** do banco: publicar primeiro o código que não usa a coluna; só na publicação seguinte colocar a coluna em `COLUNAS_REMOVIDAS`. | Na troca de versão, a versão antiga ainda atende por alguns segundos (08/11). |
 
+## Review guidelines (diretrizes para os robôs revisores dos PRs)
+
+Vale para qualquer revisor automático (hoje, o Codex no GitHub). Pedido do Rafael (09/11): o foco da revisão é
+**segurança e exposição de dados**. O revisor só comenta: não muda código, não aprova e não fecha PR.
+
+**Como comentar:** em português do Brasil, em linguagem simples (o Rafael não é programador). Cada comentário diz o
+arquivo e a linha, **o que pode vazar ou dar errado, para quem**, e um exemplo concreto de como aconteceria. Marque
+como P0/P1 só o que expõe dado ou acesso de verdade; estilo e preferência, no máximo P3, ou não comente.
+
+**O que procurar, nesta ordem:**
+
+1. **Segredos:** senha, token ou chave escritos no código, nos testes, no `.env.example`, em comentários ou em
+   mensagens de erro e de registro (log). O repositório é **público**.
+2. **Dados pessoais** (nome, CPF, telefone, e-mail, placa de associado e da equipe) entrando no repositório (testes,
+   exemplos, arquivos de referência), no registro do Render ou em mensagens de erro. Erros do SGA, do Power CRM e do
+   banco não podem ter o texto original repetido na tela nem no log (pode conter dados ou pedaços de senha).
+3. **Quem vê o quê** (`app/dados.py`, `app/rotas.py`, `app/rotas_admin.py`, `app/dependencias.py`):
+   - especialista e vendedora interna: só o próprio pacote e a própria lista do remarketing;
+   - líder: só as equipes do seu cadastro;
+   - administrador, coordenação e cadastro: tudo; financeiro: o pacote geral, sem as listas do remarketing;
+   - tudo em `/api/admin` exige o painel; importar o sistema atual e rodar a busca completa, só o administrador;
+   - gravar nas coleções `comp` e `compconf`, só administrador, coordenação e financeiro;
+   - a rota `/teste/entrar` nunca pode existir no Render (`modo_teste` desligado em produção).
+   Aponte qualquer caminho em que uma pessoa logada consiga ler ou gravar dado de outra equipe ou de outra pessoa
+   (por exemplo, trocando um número ou um nome no endereço).
+4. **Login e sessão:** conta Google presa ao CPF depois do primeiro acesso; cookie só por HTTPS no Render; e-mail do
+   Google precisa estar verificado; pedidos que gravam exigem JSON (proteção contra envio de formulário de outro site).
+5. **Página no navegador:** dado vindo do banco ou do SGA inserido como HTML (`innerHTML` com texto de fora) ou JSON
+   dentro de `<script>` sem escapar `</`; afrouxar a política de conteúdo (`Content-Security-Policy`) em `app/main.py`
+   e `CSP_CARDS` em `app/rotas.py`.
+6. **Banco:** SQL montado com texto vindo do usuário; apagar coluna fora da regra dos dois passos (Regras obrigatórias).
+7. **SGA:** qualquer chamada que não seja leitura; qualquer caminho que continue chamando o SGA depois de
+   `SGABloqueado` (inclusive novas tentativas, renovação de login e consultas em paralelo); limite de chamadas.
+
+**Não comentar:** as regras de negócio dos cards copiadas do sistema atual (`app/busca/retorno.py`,
+`app/static/cards.js`), a não ser que exponham dado ou acesso: elas foram copiadas de propósito, sem mudança.
+
 ## Mapa da obra
 
 | Peça | Onde | O que saber |
@@ -51,7 +88,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | Servidor | Render, serviço `escritorio-do-especialista` (`srv-dbnqb0rrjlhs739ikqog`), workspace "Exodus's workspace", plano Starter, região Virginia | Publica sozinho a cada push na branch configurada. Verificação de saúde: `/saude`. |
 | Banco | Supabase, projeto `qrgoeoquwqdpwsxgdrzx` (região us-east-1), numa **organização separada** do projeto `monitoramento-painel` | O conector do Supabase desta conta só enxerga a outra organização: não dá para consultar o banco do escritório por ele. As tabelas são criadas e migradas pelo próprio servidor ao ligar. RLS ligada em todas. |
 | Login | Google Cloud, cliente OAuth "Escritório no Render" | URIs de retorno: `https://escritorio-do-especialista.onrender.com/auth/callback` e `https://escritorio.exodusbeneficios.com.br/auth/callback`. |
-| Domínio | Hostinger: CNAME `escritorio` → `escritorio-do-especialista.onrender.com` | O código já aceita o domínio (`HOSTS_ESCRITORIO` tem esse padrão). |
+| Domínio | Hostinger: CNAME `escritorio` → `escritorio-do-especialista.onrender.com`; verificado no Render (08/11) | O código já aceita o domínio (`HOSTS_ESCRITORIO` tem esse padrão). |
 | Variáveis no Render | `DATABASE_URL` (endereço do Session pooler, colado com `[YOUR-PASSWORD]`), `DATABASE_PASSWORD`, `SESSION_SECRET`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `ADMIN_EMAILS` (hoje: `exoduscomercialcb@gmail.com` e `rafaelveiga.exodus@gmail.com`), `TZ` | Lista completa e comentada em `.env.example`. |
 | Sistema atual (antigo) | Artefatos no Claude (página e Kit privado), ver `docs/MANUAL_SISTEMA_ATUAL.md`, seção 2 | Continua no ar até o Rafael aprovar o novo. |
 | Referência do sistema atual | `referencia/`: página (`pagina_atual.html`, sem dados), scripts Python que montam os dados e testes de regressão | É de onde se porta a lógica (etapas 2 a 5) e o visual. Não roda no servidor. |
@@ -72,6 +109,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | `app/dados.py` | Importação dos dados do sistema atual e o pacote de cada pessoa (geral, equipe ou especialista). |
 | `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
 | `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA e do Power CRM (somente leitura), trava do SGA, registro das buscas, teste de conexão. |
+| `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, grava os pacotes e agenda (03:52; `BUSCA_AUTOMATICA=0` desliga). |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 
 ### Como o acesso funciona hoje (decisões de 08/11)
@@ -122,6 +160,8 @@ Erros do sistema atual (artefato no Claude): `docs/MANUAL_SISTEMA_ATUAL.md`, se�
 | 08/11 | Importação da planilha de acessos "não gravava" | Títulos (`Equipe(s)`), tipos (`SENHA MASTER`, `INSIDE SALES`, `SENHA FINANCEIRO`) e várias equipes por pessoa que o importador não conhecia; uma linha com CPF de 13 números | Importador aceita esse formato; a lista de erros por linha diz o que corrigir | `test_planilha_no_formato_do_sistema_atual` |
 | 08/11 | Um erro 500 em `/api/eu` durante a publicação que tirou Matrícula e Nome no SGA | A versão nova apagou as colunas enquanto a antiga ainda atendia | Passou sozinho; virou a regra das duas publicações | `tests/test_banco_config.py` (migração) |
 | 08/11 | Rafael informou o CPF de master, entrou com a conta rafaelveiga.exodus e viu "acesso não liberado" | O CPF de master está ligado à conta exoduscomercialcb; a outra conta tinha um cadastro de líder pendente que sobrou de teste | As duas contas em `ADMIN_EMAILS`; a tela diz com qual conta Google o CPF entra (e-mail parcialmente escondido) | `test_cpf_de_outra_conta_mostra_qual_conta_usar` |
+| 09/11 | (pego antes de publicar) No script adaptado, "nenhum boleto" do SGA virava "erro SGA" e página do Power CRM sem `items` parava a busca de descontos | Os clientes de `app/fontes/` só aceitavam o 406 "encontrad" e exigiam `items`; o script atual aceitava 404/406 "nenhum" e `items` ausente como "sem resultado" | Clientes iguais ao script nesses dois casos. Regra: ao trocar um pedaço de I/O do script, comparar o tratamento de cada código de resposta | `test_consultas_do_sga_renovam_o_login_e_param_no_segundo_recusado`, `test_teste_do_powercrm` |
+| 09/11 | (apontado na revisão do PR #5) Na busca em paralelo, depois de um BLOQUEADO, uma consulta que estava esperando para tentar de novo ainda chamava o SGA | A trava só era conferida na entrada de cada consulta, não antes de cada nova tentativa e da renovação do login | O cliente do SGA guarda o bloqueio e confere antes de toda chamada (`ClienteSGA.bloqueio`) | `test_bloqueio_para_a_consulta_que_esperava_nova_tentativa` |
 
 ### Armadilhas de configuração (não são erros do código)
 

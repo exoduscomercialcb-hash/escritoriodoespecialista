@@ -300,10 +300,12 @@
   async function carregarAtualizacoes() {
     let r;
     try { r = await api('/api/admin/atualizacoes'); } catch (e) { toast(e.message); return; }
+    $('atuBuscar').hidden = EU.pessoa.tipo !== 'admin';
     const pausa = $('atuPausa');
     pausa.hidden = !r.sga_pausado;
     if (r.sga_pausado) pausa.textContent = 'SGA pausado até ' + r.sga_pausado.ate_txt + ': ' + r.sga_pausado.motivo + '. Nenhuma busca chama o SGA antes disso.';
-    $('atuProxima').textContent = 'Próxima busca completa do SGA: ' + r.proxima_busca_sga_txt + '.';
+    $('atuProxima').textContent = r.busca_automatica ? 'Próxima busca completa do SGA: ' + r.proxima_busca_sga_txt + '.'
+      : 'Busca automática desligada neste servidor (só roda pelo botão).';
     $('atuFontes').replaceChildren(...r.fontes.map(f => h('div', { class: 'atu-fonte', 'data-fonte': f.fonte },
       h('b', {}, f.nome),
       h('span', { class: f.ultimo_ok_txt ? 'chip ok' : 'chip' }, f.ultimo_ok_txt ? 'Último sucesso: ' + f.ultimo_ok_txt + (f.ultimo_ok_tipo === 'teste' ? ' (teste)' : '') : 'Ainda sem busca'),
@@ -346,6 +348,17 @@
     try {
       const r = await api('/api/admin/atualizacoes/testar', { corpo: {} });
       $('atuResultado').replaceChildren(...[['SGA', r.sga], ['Power CRM', r.powercrm]].map(([n, x]) => h('p', { class: x.ok ? 'ok-msg' : 'err' }, n + ': ' + x.mensagem)));
+      carregarAtualizacoes();
+    } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
+    b.disabled = false;
+  });
+
+  $('atuBuscar').addEventListener('click', async () => {
+    if (!confirm('A busca completa usa o mesmo acesso do SGA que o sistema atual e leva alguns minutos. Não rode no mesmo horário das tarefas do sistema atual. Rodar agora?')) return;
+    const b = $('atuBuscar'); b.disabled = true;
+    try {
+      const r = await api('/api/admin/atualizacoes/busca', { corpo: {} });
+      $('atuResultado').replaceChildren(h('p', { class: r.ok ? 'ok-msg' : 'err' }, r.mensagem));
       carregarAtualizacoes();
     } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
     b.disabled = false;

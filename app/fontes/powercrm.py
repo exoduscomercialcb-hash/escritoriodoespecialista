@@ -34,8 +34,8 @@ class ClientePowerCRM:
                     dados = r.json()
                 except ValueError:
                     dados = None
-                if isinstance(dados, dict) and isinstance(dados.get("items"), list):
-                    return dados["items"]
+                if isinstance(dados, dict):  # sem "items": fim das páginas (igual ao script atual)
+                    return dados["items"] if isinstance(dados.get("items"), list) else []
             self.espera(5 * (tentativa + 1))
         raise PowerCRMErro("o Power CRM não respondeu depois de 3 tentativas")
 

@@ -90,6 +90,9 @@ def test_consultas_do_sga_renovam_o_login_e_param_no_segundo_recusado():
         c.post("/listar/veiculo", {})
     falso = SGAFalso(LOGIN_OK, httpx2.Response(406, text="Nenhum veículo encontrado"))
     assert ClienteSGA("t", "u", "s", http=falso.cliente()).post("/listar/veiculo", {}) == {}
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(404, text="Nenhum boleto para o filtro"))  # sem repetir a consulta
+    assert ClienteSGA("t", "u", "s", http=falso.cliente()).post("/listar/boleto-associado-veiculo", {}) == {}
+    assert len(falso.pedidos) == 2
 
 
 def test_limite_de_chamadas_e_tentativas():
@@ -108,6 +111,8 @@ def test_teste_do_powercrm(db):
     r = atu.testar_powercrm(db, CFG, http=falso.cliente(base="https://api.powercrm.com.br"))
     assert r["ok"] is True and "2 cotação" in r["mensagem"]
     assert falso.pedidos[0].headers["authorization"] == "Bearer pc-inventado"
+    falso = SGAFalso(httpx2.Response(200, json={"total": 0}))  # sem "items": fim das páginas
+    assert atu.testar_powercrm(db, CFG, http=falso.cliente(base="https://api.powercrm.com.br"))["ok"] is True
     falso = SGAFalso(httpx2.Response(401))
     r = atu.testar_powercrm(db, CFG, http=falso.cliente(base="https://api.powercrm.com.br"))
     assert r["ok"] is False and "recusou o token" in r["mensagem"]
@@ -139,3 +144,35 @@ def test_painel_de_atualizacoes(admin, novo_cliente, db):
     entrar(c, "sem@exemplo.com.br")
     assert c.get("/api/admin/atualizacoes").status_code == 403
     assert c.post("/api/admin/atualizacoes/testar", json={}).status_code == 403
+
+
+def test_consulta_get_do_sga():
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json=[{"codigo": "1", "descricao": "Inadimplência"}]),
+                     httpx2.Response(404), httpx2.Response(403, text="BLOQUEADO"))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=lambda _s: None)
+    assert c.get("/listar/situacaomotivo/ativo") == [{"codigo": "1", "descricao": "Inadimplência"}]
+    assert c.get("/veiculo/buscar/123/codigo") is None
+    with pytest.raises(SGABloqueado):
+        c.get("/veiculo/buscar/456/codigo")
+    assert falso.pedidos[1].method == "GET"
+
+
+def test_bloqueio_para_a_consulta_que_esperava_nova_tentativa():
+    """Busca em paralelo: a consulta A falha na rede e espera; nesse meio tempo a B recebe BLOQUEADO.
+    A A não pode tentar de novo (revisão do PR #5)."""
+    falso = SGAFalso(LOGIN_OK, httpx2.ConnectTimeout("rede"), httpx2.Response(403, text="BLOQUEADO"))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente())
+
+    def enquanto_a_espera(_segundos):
+        with pytest.raises(SGABloqueado):
+            c.post("/listar/veiculo", {"b": 1})
+
+    c.espera = enquanto_a_espera
+    with pytest.raises(SGABloqueado, match="BLOQUEADO"):
+        c.post("/listar/veiculo", {"a": 1})
+    assert len(falso.pedidos) == 3  # login, 1ª tentativa da A e a B; nada depois do bloqueio
+    with pytest.raises(SGABloqueado):  # nem login novo nem GET saem depois disso
+        c.autenticar()
+    with pytest.raises(SGABloqueado):
+        c.get("/veiculo/buscar/1/codigo")
+    assert len(falso.pedidos) == 3
