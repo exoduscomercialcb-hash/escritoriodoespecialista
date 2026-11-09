@@ -90,6 +90,9 @@ def test_consultas_do_sga_renovam_o_login_e_param_no_segundo_recusado():
         c.post("/listar/veiculo", {})
     falso = SGAFalso(LOGIN_OK, httpx2.Response(406, text="Nenhum veículo encontrado"))
     assert ClienteSGA("t", "u", "s", http=falso.cliente()).post("/listar/veiculo", {}) == {}
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(404, text="Nenhum boleto para o filtro"))  # sem repetir a consulta
+    assert ClienteSGA("t", "u", "s", http=falso.cliente()).post("/listar/boleto-associado-veiculo", {}) == {}
+    assert len(falso.pedidos) == 2
 
 
 def test_limite_de_chamadas_e_tentativas():
@@ -108,6 +111,8 @@ def test_teste_do_powercrm(db):
     r = atu.testar_powercrm(db, CFG, http=falso.cliente(base="https://api.powercrm.com.br"))
     assert r["ok"] is True and "2 cotação" in r["mensagem"]
     assert falso.pedidos[0].headers["authorization"] == "Bearer pc-inventado"
+    falso = SGAFalso(httpx2.Response(200, json={"total": 0}))  # sem "items": fim das páginas
+    assert atu.testar_powercrm(db, CFG, http=falso.cliente(base="https://api.powercrm.com.br"))["ok"] is True
     falso = SGAFalso(httpx2.Response(401))
     r = atu.testar_powercrm(db, CFG, http=falso.cliente(base="https://api.powercrm.com.br"))
     assert r["ok"] is False and "recusou o token" in r["mensagem"]

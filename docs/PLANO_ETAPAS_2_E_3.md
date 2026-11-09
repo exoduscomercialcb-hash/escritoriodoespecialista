@@ -32,7 +32,7 @@ Reescrever do zero arrisca mudar uma regra sem querer.
 | 2.2 | Importar os dados do sistema atual (pacotes, lista do remarketing, marcações) e guardar no banco | Exportação feita pelo Claude que tem o Kit (abaixo) | pronta (PR #3); falta o arquivo |
 | 3.1 | `/api/dados`: o pacote da pessoa logada (coordenação/financeiro/cadastro: geral; líder: a equipe; especialista e vendedora: o dele) | 2.2 | pronta (PR #3) |
 | 3.2 | A página atual com os 6 cards, lendo `/api/dados` e gravando as marcações em `/api/banco` | 3.1 | pronta (PR #3); conferir com os dados reais. Envio de comprovantes e prints fica para a etapa 4 |
-| 2.3 | A busca automática (o script adaptado) regenerando os pacotes; 1 vez por dia, de madrugada, enquanto o sistema atual estiver no ar | 2.1 aprovada e testada no Render; 2.2 (estado anterior) | a fazer |
+| 2.3 | A busca automática (o script adaptado) regenerando os pacotes; 1 vez por dia, de madrugada, enquanto o sistema atual estiver no ar | 2.1 aprovada e testada no Render; 2.2 (estado anterior) | pronta (branch `etapa-2-busca`); roda depois da importação |
 | 2.4 | Botão "Atualizar meus dados" (busca pequena por pessoa, fila, 15 minutos) | 2.3 | a fazer |
 
 Com 2.2, 3.1 e 3.2 prontas, os cards já mostram os dados de hoje (os da última atualização do sistema atual), antes

@@ -83,8 +83,9 @@ class ClienteSGA:
                     raise SGABloqueado(f"o SGA recusou o acesso duas vezes seguidas em {caminho}")
                 self.autenticar()  # o token de acesso expira depois de alguns minutos
                 continue
-            if r.status_code == 406 and "encontrad" in r.text[:500].lower():
-                return {}  # nenhum resultado para esse filtro
+            texto = r.text[:500].lower()
+            if r.status_code in (404, 406) and ("encontrad" in texto or "nenhum" in texto):
+                return {}  # nenhum resultado para esse filtro (ex.: "nenhum boleto"): resposta definitiva, sem repetir
             if r.is_success:
                 try:
                     return r.json()

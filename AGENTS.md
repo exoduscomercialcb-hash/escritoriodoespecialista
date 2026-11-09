@@ -14,8 +14,9 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   Power CRM conectaram.**
 - **Cards (partes 2.2, 3.1 e 3.2)** no ar em `/escritorio`, ainda **sem dados**: falta o Rafael pedir a exportação ao
   Claude que tem o Kit e importar em Painel > Atualizações > Dados do sistema atual.
-- **Próximo:** parte 2.3, a busca automática (o script atual adaptado), 1 vez por dia às 03:52 enquanto o sistema atual
-  estiver no ar. Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
+- **Parte 2.3 (busca automática)** pronta no PR da branch `etapa-2-busca`, esperando a aprovação do Rafael. Depois de
+  aprovada, roda sozinha às 03:52 (só se os dados do sistema atual já tiverem sido importados) e pelo botão do painel.
+- **Próximo:** parte 2.4, o botão "Atualizar meus dados". Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa
 
@@ -122,6 +123,7 @@ Erros do sistema atual (artefato no Claude): `docs/MANUAL_SISTEMA_ATUAL.md`, se�
 | 08/11 | Importação da planilha de acessos "não gravava" | Títulos (`Equipe(s)`), tipos (`SENHA MASTER`, `INSIDE SALES`, `SENHA FINANCEIRO`) e várias equipes por pessoa que o importador não conhecia; uma linha com CPF de 13 números | Importador aceita esse formato; a lista de erros por linha diz o que corrigir | `test_planilha_no_formato_do_sistema_atual` |
 | 08/11 | Um erro 500 em `/api/eu` durante a publicação que tirou Matrícula e Nome no SGA | A versão nova apagou as colunas enquanto a antiga ainda atendia | Passou sozinho; virou a regra das duas publicações | `tests/test_banco_config.py` (migração) |
 | 08/11 | Rafael informou o CPF de master, entrou com a conta rafaelveiga.exodus e viu "acesso não liberado" | O CPF de master está ligado à conta exoduscomercialcb; a outra conta tinha um cadastro de líder pendente que sobrou de teste | As duas contas em `ADMIN_EMAILS`; a tela diz com qual conta Google o CPF entra (e-mail parcialmente escondido) | `test_cpf_de_outra_conta_mostra_qual_conta_usar` |
+| 09/11 | (pego antes de publicar) No script adaptado, "nenhum boleto" do SGA virava "erro SGA" e página do Power CRM sem `items` parava a busca de descontos | Os clientes de `app/fontes/` só aceitavam o 406 "encontrad" e exigiam `items`; o script atual aceitava 404/406 "nenhum" e `items` ausente como "sem resultado" | Clientes iguais ao script nesses dois casos. Regra: ao trocar um pedaço de I/O do script, comparar o tratamento de cada código de resposta | `test_consultas_do_sga_renovam_o_login_e_param_no_segundo_recusado`, `test_teste_do_powercrm` |
 
 ### Armadilhas de configuração (não são erros do código)
 
