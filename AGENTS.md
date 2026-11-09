@@ -43,6 +43,43 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 | A página dos cards foi gerada uma vez (08/11) da página atual por `scripts/gerar_pagina_cards.py`. Daqui em diante, edite `app/static/cards.js` e `cards.css` direto; não rode o gerador de novo (ele apagaria as edições). | O gerador fica só como registro do que foi trocado. |
 | Para **apagar coluna** do banco: publicar primeiro o código que não usa a coluna; só na publicação seguinte colocar a coluna em `COLUNAS_REMOVIDAS`. | Na troca de versão, a versão antiga ainda atende por alguns segundos (08/11). |
 
+## Review guidelines (diretrizes para os robôs revisores dos PRs)
+
+Vale para qualquer revisor automático (hoje, o Codex no GitHub). Pedido do Rafael (09/11): o foco da revisão é
+**segurança e exposição de dados**. O revisor só comenta: não muda código, não aprova e não fecha PR.
+
+**Como comentar:** em português do Brasil, em linguagem simples (o Rafael não é programador). Cada comentário diz o
+arquivo e a linha, **o que pode vazar ou dar errado, para quem**, e um exemplo concreto de como aconteceria. Marque
+como P0/P1 só o que expõe dado ou acesso de verdade; estilo e preferência, no máximo P3, ou não comente.
+
+**O que procurar, nesta ordem:**
+
+1. **Segredos:** senha, token ou chave escritos no código, nos testes, no `.env.example`, em comentários ou em
+   mensagens de erro e de registro (log). O repositório é **público**.
+2. **Dados pessoais** (nome, CPF, telefone, e-mail, placa de associado e da equipe) entrando no repositório (testes,
+   exemplos, arquivos de referência), no registro do Render ou em mensagens de erro. Erros do SGA, do Power CRM e do
+   banco não podem ter o texto original repetido na tela nem no log (pode conter dados ou pedaços de senha).
+3. **Quem vê o quê** (`app/dados.py`, `app/rotas.py`, `app/rotas_admin.py`, `app/dependencias.py`):
+   - especialista e vendedora interna: só o próprio pacote e a própria lista do remarketing;
+   - líder: só as equipes do seu cadastro;
+   - administrador, coordenação e cadastro: tudo; financeiro: o pacote geral, sem as listas do remarketing;
+   - tudo em `/api/admin` exige o painel; importar o sistema atual e rodar a busca completa, só o administrador;
+   - gravar nas coleções `comp` e `compconf`, só administrador, coordenação e financeiro;
+   - a rota `/teste/entrar` nunca pode existir no Render (`modo_teste` desligado em produção).
+   Aponte qualquer caminho em que uma pessoa logada consiga ler ou gravar dado de outra equipe ou de outra pessoa
+   (por exemplo, trocando um número ou um nome no endereço).
+4. **Login e sessão:** conta Google presa ao CPF depois do primeiro acesso; cookie só por HTTPS no Render; e-mail do
+   Google precisa estar verificado; pedidos que gravam exigem JSON (proteção contra envio de formulário de outro site).
+5. **Página no navegador:** dado vindo do banco ou do SGA inserido como HTML (`innerHTML` com texto de fora) ou JSON
+   dentro de `<script>` sem escapar `</`; afrouxar a política de conteúdo (`Content-Security-Policy`) em `app/main.py`
+   e `CSP_CARDS` em `app/rotas.py`.
+6. **Banco:** SQL montado com texto vindo do usuário; apagar coluna fora da regra dos dois passos (Regras obrigatórias).
+7. **SGA:** qualquer chamada que não seja leitura; qualquer caminho que continue chamando o SGA depois de
+   `SGABloqueado` (inclusive novas tentativas, renovação de login e consultas em paralelo); limite de chamadas.
+
+**Não comentar:** as regras de negócio dos cards copiadas do sistema atual (`app/busca/retorno.py`,
+`app/static/cards.js`), a não ser que exponham dado ou acesso: elas foram copiadas de propósito, sem mudança.
+
 ## Mapa da obra
 
 | Peça | Onde | O que saber |
