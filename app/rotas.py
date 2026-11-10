@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import quote
 
 from authlib.integrations.starlette_client import OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -46,6 +47,31 @@ def saude():
 @rotas.get("/", include_in_schema=False)
 def pagina():
     return FileResponse(PAGINA, media_type="text/html; charset=utf-8")
+
+
+# ---------------------------------------------------------------- links curtos de campanha
+# Pedido do Rafael (10/11): link de uma linha no fim da mensagem da Black Friday. O lead toca e abre o WhatsApp do
+# especialista com a mensagem dele já escrita. Sem login e sem dados de ninguém: só o número comercial e o texto.
+LINKS_CURTOS = {
+    "bf": ("5521967950692", "Recebi uma mensagem do Miguelzinho sobre condições especiais para proteger meu veículo "
+                            "e gostaria de saber mais sobre essa oportunidade!"),
+}
+
+
+def _destino_whatsapp(numero: str, texto: str) -> str:
+    return "https://api.whatsapp.com/send?phone=" + numero + "&text=" + quote(texto, safe="")
+
+
+def _rota_link_curto(codigo: str):
+    numero, texto = LINKS_CURTOS[codigo]
+
+    def abrir():
+        return RedirectResponse(_destino_whatsapp(numero, texto), status_code=302)
+    rotas.add_api_route("/" + codigo, abrir, methods=["GET"], include_in_schema=False, name="link_" + codigo)
+
+
+for _codigo in LINKS_CURTOS:
+    _rota_link_curto(_codigo)
 
 
 # ---------------------------------------------------------------- login com Google
