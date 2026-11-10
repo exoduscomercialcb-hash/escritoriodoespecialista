@@ -120,8 +120,10 @@ def test_teste_do_powercrm(db):
 
 def test_proximo_horario_do_sga():
     sp = timezone(timedelta(hours=-3))
-    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 2, 0, tzinfo=sp)) == datetime(2026, 11, 8, 6, 52, tzinfo=timezone.utc)
-    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 4, 0, tzinfo=sp)) == datetime(2026, 11, 9, 6, 52, tzinfo=timezone.utc)
+    # 06:00 e 16:00 de Brasília = 09:00 e 19:00 UTC
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 2, 0, tzinfo=sp)) == datetime(2026, 11, 8, 9, 0, tzinfo=timezone.utc)
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 7, 0, tzinfo=sp)) == datetime(2026, 11, 8, 19, 0, tzinfo=timezone.utc)
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 17, 0, tzinfo=sp)) == datetime(2026, 11, 9, 9, 0, tzinfo=timezone.utc)
 
 
 def test_teste_de_partida_so_quando_devido(app, db):
@@ -176,3 +178,20 @@ def test_bloqueio_para_a_consulta_que_esperava_nova_tentativa():
     with pytest.raises(SGABloqueado):
         c.get("/veiculo/buscar/1/codigo")
     assert len(falso.pedidos) == 3
+
+
+def test_palavra_bloqueado_nos_dados_nao_e_bloqueio():
+    """Alarme falso de 10/11: a lista de status de atendimento do SGA tem um status chamado "Bloqueado"."""
+    lista = [{"codigo_statusatendimentoassociado": "7", "descricao": "BLOQUEADO"}]
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json=lista),
+                     httpx2.Response(200, json={"veiculos": [{"situacao": "Bloqueado"}]}),
+                     httpx2.Response(403, text="Token BLOQUEADO"))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=lambda _s: None)
+    assert c.get("/listar/status-atendimento/todos") == lista
+    assert c.post("/listar/veiculo", {}) == {"veiculos": [{"situacao": "Bloqueado"}]}
+    assert c.bloqueio is None
+    with pytest.raises(SGABloqueado):  # o aviso de verdade (resposta de erro) continua parando
+        c.post("/listar/veiculo", {})
+    falso = SGAFalso(httpx2.Response(200, json={"mensagem": "Usuário bloqueado"}))  # login sem token, com o aviso
+    with pytest.raises(SGABloqueado):
+        ClienteSGA("t", "u", "s", http=falso.cliente()).autenticar()

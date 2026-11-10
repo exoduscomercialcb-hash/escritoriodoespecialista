@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, time, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .config import FUSO, Config
@@ -20,9 +20,8 @@ from .tempo import agora, formatar, iso, utc
 log = logging.getLogger("escritorio")
 
 TRAVA_SGA = "sga_bloqueado"
-# Horário da busca completa do SGA (Brasília). Enquanto o sistema atual estiver no ar, só 1 vez por dia, de madrugada,
-# porque os dois sistemas usam o mesmo token (decisão de 08/11).
-HORARIOS_SGA = (time(3, 52),)
+# Horários da busca completa do SGA (Brasília): 06:00 e 16:00 (decisão do Rafael, 10/11).
+HORARIOS_SGA = (time(6, 0), time(16, 0))
 FONTES = {"sga": "SGA", "powercrm": "Power CRM", "bi": "BI Brasil Atuarial", "drive": "Google Drive"}
 INTERVALO_DO_TESTE_DE_PARTIDA = timedelta(hours=12)
 
@@ -39,6 +38,17 @@ def travar(db: Session, nome: str, ate: datetime, motivo: str) -> None:
     trava.ate, trava.motivo, trava.criado_em = ate, motivo[:300], agora()
     db.merge(trava)
     db.commit()
+
+
+def retirar_pausa_do_sga(db: Session, nome: str) -> dict:
+    """O administrador tira a pausa (ex.: alarme falso, com o sistema atual funcionando). Fica registrado."""
+    trava = trava_ativa(db, TRAVA_SGA)
+    if trava is None:
+        return {"ok": False, "mensagem": "O SGA não está pausado."}
+    motivo = trava.motivo
+    db.execute(delete(Trava).where(Trava.nome == TRAVA_SGA))
+    db.commit()
+    return concluir(db, iniciar(db, "sga", "pausa retirada"), True, f"Pausa do SGA retirada por {nome} (era: {motivo}).")
 
 
 def proximo_horario_sga(depois_de: datetime | None = None) -> datetime:

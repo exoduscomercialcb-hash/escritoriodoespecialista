@@ -24,7 +24,9 @@ class SGAErro(RuntimeError):
 
 
 def _bloqueado(resposta: httpx2.Response) -> bool:
-    return "bloquead" in resposta.text[:2000].lower()
+    """Aviso de bloqueio do SGA: só numa resposta de ERRO. Numa resposta boa, "bloqueado" é dado (ex.: a lista de
+    situações de atendimento tem um status com esse nome) e não pode parar a busca (alarme falso de 10/11)."""
+    return not resposta.is_success and "bloquead" in resposta.text[:2000].lower()
 
 
 class ClienteSGA:
@@ -69,6 +71,8 @@ class ClienteSGA:
                 token_usuario = r.json().get("token_usuario")
             except ValueError:
                 token_usuario = None
+        if not token_usuario and "bloquead" in r.text[:2000].lower():
+            raise self._bloquear("o SGA respondeu BLOQUEADO no login")
         if not token_usuario:
             raise SGAErro(f"o SGA não devolveu o token de acesso (código {r.status_code})")
         self._cabecalho = {"Authorization": f"Bearer {token_usuario}"}
