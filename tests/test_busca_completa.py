@@ -118,13 +118,15 @@ def test_uma_busca_de_cada_vez(app, db):
 
 
 def test_horario_do_agendador(app, db):
-    assert bc.ultimo_horario_sga(datetime(2026, 11, 9, 4, 0, tzinfo=SP)) == datetime(2026, 11, 9, 6, 52, tzinfo=timezone.utc)
-    assert bc.ultimo_horario_sga(datetime(2026, 11, 9, 3, 0, tzinfo=SP)) == datetime(2026, 11, 8, 6, 52, tzinfo=timezone.utc)
-    assert bc.busca_devida(db, datetime(2026, 11, 9, 4, 30, tzinfo=SP)) is True
-    assert bc.busca_devida(db, datetime(2026, 11, 9, 10, 0, tzinfo=SP)) is False  # de dia não roda (sistema atual)
-    db.add(Atualizacao(fonte="sga", tipo="agendada", inicio=datetime(2026, 11, 9, 6, 55, tzinfo=timezone.utc)))
+    assert bc.ultimo_horario_sga(datetime(2026, 11, 9, 7, 0, tzinfo=SP)) == datetime(2026, 11, 9, 9, 0, tzinfo=timezone.utc)
+    assert bc.ultimo_horario_sga(datetime(2026, 11, 9, 17, 0, tzinfo=SP)) == datetime(2026, 11, 9, 19, 0, tzinfo=timezone.utc)
+    assert bc.ultimo_horario_sga(datetime(2026, 11, 9, 5, 0, tzinfo=SP)) == datetime(2026, 11, 8, 19, 0, tzinfo=timezone.utc)
+    assert bc.busca_devida(db, datetime(2026, 11, 9, 6, 30, tzinfo=SP)) is True
+    assert bc.busca_devida(db, datetime(2026, 11, 9, 11, 0, tzinfo=SP)) is False  # passou da janela de 3 horas
+    db.add(Atualizacao(fonte="sga", tipo="agendada", inicio=datetime(2026, 11, 9, 9, 1, tzinfo=timezone.utc)))
     db.commit()
-    assert bc.busca_devida(db, datetime(2026, 11, 9, 4, 30, tzinfo=SP)) is False  # já rodou depois das 03:52
+    assert bc.busca_devida(db, datetime(2026, 11, 9, 7, 30, tzinfo=SP)) is False  # já rodou depois das 06:00
+    assert bc.busca_devida(db, datetime(2026, 11, 9, 16, 5, tzinfo=SP)) is True  # a das 16:00 ainda não
 
 
 def test_botao_do_painel(admin, novo_cliente, db, app):
@@ -142,3 +144,21 @@ def test_importacao_apaga_o_que_a_busca_gravou(admin, db):
     assert admin.post("/api/admin/importar-sistema-atual", json=exp).status_code == 200
     db.expire_all()
     assert ler(db, "t:SUMIU") is None and ler(db, "busca") is None
+
+
+def test_administrador_tira_a_pausa_do_sga(admin, novo_cliente, db):
+    from .conftest import criar_pessoa, entrar
+    r = admin.post("/api/admin/atualizacoes/retirar-pausa", json={}).json()
+    assert r["ok"] is False and "não está pausado" in r["mensagem"]
+    atu.travar(db, atu.TRAVA_SGA, datetime.now(timezone.utc) + timedelta(hours=5), "o SGA respondeu BLOQUEADO em listar")
+    assert admin.get("/api/admin/atualizacoes").json()["sga_pausado"] is not None
+    # a coordenação não tira a pausa
+    criar_pessoa(db, nome="Coordenacao Inventada", email="coord@exemplo.com.br", tipo="coordenacao")
+    c = novo_cliente()
+    entrar(c, "coord@exemplo.com.br")
+    assert c.post("/api/admin/atualizacoes/retirar-pausa", json={}).status_code in (403,)
+    r = admin.post("/api/admin/atualizacoes/retirar-pausa", json={}).json()
+    assert r["ok"] is True and "retirada por Admin Teste" in r["mensagem"] and "em listar" in r["mensagem"]
+    db.expire_all()
+    assert atu.trava_ativa(db, atu.TRAVA_SGA) is None
+    assert admin.get("/api/admin/atualizacoes").json()["historico"][0]["tipo"] == "pausa retirada"

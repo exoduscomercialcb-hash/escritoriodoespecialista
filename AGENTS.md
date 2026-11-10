@@ -15,7 +15,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 - **Cards (partes 2.2, 3.1 e 3.2)** no ar em `/escritorio`, ainda **sem dados**: falta o Rafael pedir a exportação ao
   Claude que tem o Kit e importar em Painel > Atualizações > Dados do sistema atual.
 - **Parte 2.3 (busca automática)** pronta no PR da branch `etapa-2-busca`, esperando a aprovação do Rafael. Depois de
-  aprovada, roda sozinha às 03:52 (só se os dados do sistema atual já tiverem sido importados) e pelo botão do painel.
+  aprovada, roda sozinha às 06:00 e às 16:00 (só se os dados do sistema atual já tiverem sido importados) e pelo botão do painel.
 - **Próximo:** parte 2.4, o botão "Atualizar meus dados". Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa
@@ -109,7 +109,7 @@ como P0/P1 só o que expõe dado ou acesso de verdade; estilo e preferência, no
 | `app/dados.py` | Importação dos dados do sistema atual e o pacote de cada pessoa (geral, equipe ou especialista). |
 | `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
 | `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA e do Power CRM (somente leitura), trava do SGA, registro das buscas, teste de conexão. |
-| `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, grava os pacotes e agenda (03:52; `BUSCA_AUTOMATICA=0` desliga). |
+| `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, grava os pacotes e agenda (06:00 e 16:00; `BUSCA_AUTOMATICA=0` desliga). |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 
 ### Como o acesso funciona hoje (decisões de 08/11)

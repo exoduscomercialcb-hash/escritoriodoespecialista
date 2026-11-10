@@ -120,8 +120,10 @@ def test_teste_do_powercrm(db):
 
 def test_proximo_horario_do_sga():
     sp = timezone(timedelta(hours=-3))
-    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 2, 0, tzinfo=sp)) == datetime(2026, 11, 8, 6, 52, tzinfo=timezone.utc)
-    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 4, 0, tzinfo=sp)) == datetime(2026, 11, 9, 6, 52, tzinfo=timezone.utc)
+    # 06:00 e 16:00 de Brasília = 09:00 e 19:00 UTC
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 2, 0, tzinfo=sp)) == datetime(2026, 11, 8, 9, 0, tzinfo=timezone.utc)
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 7, 0, tzinfo=sp)) == datetime(2026, 11, 8, 19, 0, tzinfo=timezone.utc)
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 17, 0, tzinfo=sp)) == datetime(2026, 11, 9, 9, 0, tzinfo=timezone.utc)
 
 
 def test_teste_de_partida_so_quando_devido(app, db):

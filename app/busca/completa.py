@@ -1,6 +1,6 @@
 """A busca completa: monta a entrada a partir do banco, roda o script adaptado e grava os pacotes.
 
-Quem chama: o agendador (1 vez por dia, às 03:52 de Brasília, enquanto o sistema atual estiver no ar) e o botão
+Quem chama: o agendador (todo dia às 06:00 e às 16:00 de Brasília, ver HORARIOS_SGA) e o botão
 "Rodar a busca agora" do painel do administrador. As duas portas respeitam as mesmas travas:
 - SGA pausado (BLOQUEADO ou login recusado duas vezes): não chama o SGA até o próximo horário agendado;
 - uma busca de cada vez (trava "busca_rodando" no banco, que vence sozinha depois de 2 horas);
@@ -34,7 +34,7 @@ DURACAO_MAXIMA = timedelta(hours=2)  # se o servidor cair no meio, a trava vence
 # A busca completa do sistema atual faz alguns milhares de chamadas (base ativa, histórico, boletos, detalhes novos).
 # O limite só existe para uma busca com defeito não martelar o SGA sem fim.
 LIMITE_CHAMADAS_SGA = 20000
-JANELA_DO_AGENDADOR = timedelta(hours=3)  # servidor reiniciado às 04:30 ainda roda a busca das 03:52; às 10h, não
+JANELA_DO_AGENDADOR = timedelta(hours=3)  # servidor reiniciado às 07:30 ainda roda a busca das 06:00; às 10h, não
 INTERVALO_DO_AGENDADOR = 300  # segundos entre uma conferência e outra
 
 _uma_de_cada_vez = threading.Lock()  # dentro do mesmo servidor; a trava no banco cobre o resto
