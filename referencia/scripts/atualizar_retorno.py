@@ -369,7 +369,12 @@ if VALMS:
 PLANTAO = {"2026-09": [("2026-09-26", "2026-09-30")]}   # meses sem regra informada = tudo fora do plantão
 try: REGRAS = (json.load(open(os.path.join(KIT, "comp_marks.json"), encoding="utf-8")) or {}).get("regras") or {}   # lista do coordenador por placa: plt = desconto conta como plantão; nc/obs = instalação não cobrada
 except Exception: REGRAS = {}
-def plt_(x): return bool((REGRAS.get(pl_(x.get("placa"))) or {}).get("plt"))
+def plt_(x):   # lista do coordenador: plantão por placa; sem placa, pelo chassi ou NOME:<nome> (plantão 30-31/10/2026 tinha veículos sem placa)
+    de = (globals().get("DET") or {}).get(str(x.get("codigo_veiculo"))) or {}
+    nm = N(x.get("nome") or x.get("nome_associado") or de.get("nome") or de.get("nome_associado"))
+    for kk in (pl_(x.get("placa")), pl_(x.get("chassi") or de.get("chassi")), "NOME:" + nm if nm else ""):
+        if kk and (REGRAS.get(kk) or {}).get("plt"): return True
+    return False
 DESDE = "2026-09"
 DESC = OLD.get("desc") or {"d": {}, "tk": {}}
 QM = {}

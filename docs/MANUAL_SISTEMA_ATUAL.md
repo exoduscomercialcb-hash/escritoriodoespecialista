@@ -35,10 +35,11 @@ Dono: Rafael Veiga (coordenador, Exodus Benefícios). Responder sempre em portug
 - **"atualize" / "atualize tudo" / "atualize painel"**: atualização completa.
   1. Montar `runNN/kit` com os arquivos do Kit, `comp_registro.json` e `comp_marks.json` (`{"<mês>": doc comp/<mês>, "regras": doc comp/regras}`).
   2. Rodar `atualizar_retorno.py`.
-  3. Rodar `pix.py`.
-  4. Rodar os testes.
-  5. Publicar.
-  6. Enviar os e-mails de cancelados com `email_cancelados.py`.
+  3. Rodar `liderado_pc.py` (adesões de liderado cadastradas no nome do líder no SGA; usa só o Power CRM). No sistema novo: `app/busca/liderado.py`, logo depois do script.
+  4. Rodar `pix.py`.
+  5. Rodar os testes.
+  6. Publicar.
+  7. Enviar os e-mails de cancelados com `email_cancelados.py`.
 - **"Pix"**: só os comprovantes. Conferir os novos no Drive, gravar na `compconf` e rodar `pix.py` sem consultar o SGA.
 - **"Pix DD"**: imagem de ganho ("Meta batida. Mais ganho para você."). Base = R$ 50, residência = R$ 100, só com contrato ativo. Inside Sales não ganha; instalação cancelada não ganha.
 - **"ranking"**: pertence a outra conversa.
@@ -49,7 +50,10 @@ Dono: Rafael Veiga (coordenador, Exodus Benefícios). Responder sempre em portug
 - **Descontos (Power CRM)**: só contam as cotações em **venda concretizada** (`cardStatus` = 5). Cotações arquivadas (`isShelved` = S) e as de outras etapas do funil são ignoradas (01/11).
 - **Rastreador não cobrado por meta (ex.: Meta 21/10, 28/10, 30/10)**: só vale se a **data do contrato no SGA** for do mês da meta (`regras[placa].mes`). Ativou em outro mês = cobra. Sem placa: usar o chassi ou `NOME:<NOME COMPLETO NORMALIZADO>`.
 - **Região dos Lagos** (04/11): associado de Rio das Ostras, Cabo Frio, Macaé, Araruama, São Pedro da Aldeia, Maricá, Saquarema, Casimiro de Abreu, Arraial do Cabo, Armação dos Búzios, Iguaba Grande, Silva Jardim ou Campos dos Goytacazes: o rastreador desconta **R$ 50** (base ou residência). Promoção que libera o rastreador (meta, `nc`) continua sem desconto. Cidade = `clientCity` da cotação no Power CRM (`ades[].cid`); sem SGA, `kit/cid_pc.py` preenche. Lista em `LAGOS` na página. Teste T15.
+- **Adesão do liderado no nome do líder** (09/11): se no SGA a adesão está no nome do **líder da equipe** e no Power CRM a venda concretizada tem um **afiliado** (liderado), a adesão conta para o liderado (lista de comprovantes, validadas, "Minha base" × "Liderados" e o acesso próprio do liderado). Total da equipe não muda. Vale a partir de set/26. Afiliado com o mesmo nome do líder não muda nada. Script `kit/liderado_pc.py` (idempotente: guarda `esp_sga`); no sistema novo, `app/busca/liderado.py` (se o Power CRM falhar, vale o que a busca anterior já tinha movido). Toda série nova nasce com `base[]`. Testes T17 e T18; no sistema novo, `tests/test_busca_liderado.py`.
 - **TOP 3 Plantão**: regra `plt` (desconto conta como plantão). Sem mês definido.
+- **Plantão 30 e 31/10/2026** (09/11): as 58 ativações da lista do Rafael têm `plt` em `regras` (desconto conta como plantão e não entra na meta de desconto do especialista nem do líder). Sem placa: chave = chassi ou `NOME:<nome>`; `plt_()` no script procura placa, chassi e nome. Não muda a cobrança do rastreador (só quem já tinha `nc`).
+- **Meta 06/11/2026** (09/11): 17 contratos com `nc` e `mes: 2026-11` (rastreador não cobrado se o contrato no SGA for de novembro).
 - **Validação manual**: `regras[placa] = {val: true, forma: "cartão de crédito", mes}` conta a adesão como validada sem boleto.
 - **Cores**:
   - Comprovantes: branco = sem comprovante; amarelo = anexado (verificação de hora em hora); azul com letra branca = valor conferido pelo sistema (2x ao dia ou pelo coordenador); verde-escuro com letra branca = baixa do financeiro.
@@ -80,6 +84,10 @@ Erros do sistema novo (Render): `AGENTS.md`, seção "Kit de erros".
 | 03/11 | Liderado novo com o mesmo início de nome de outro (Rodrigo Moraes Venâncio × Rodrigo Moraes Luiz) | O login usa as 2 primeiras palavras do nome; "Rodrigo Moraes" já existia. E ele não tem vendas no próprio nome no SGA | Login "Rodrigo Venâncio" (id 99, equipe Elite, `sga` = RODRIGO MORAES VENANCIO). Sem vendas no SGA, o script usa a equipe do cadastro (`eqs`) | T14 |
 | 03/11 | Atualização parou: `ValueError` em `VC = dict(OLD.get("vcache"))`; página foi de 1,1 MB para 1,9 MB | A regra das vendas concretizadas (01/11) usou o nome `VC`, que já era o cache das validadas: o bloco `all` passou a guardar as 1.561 cotações do Power CRM no lugar do `vcache` | Variável renomeada para `VCOT`; `vcache` restaurado da atualização de 01/11 22:16; o script recusa publicar se o `vcache` não for um dicionário | assert no script |
 | 04/11 | SGA recusou o login (401 "Login ou senha inválido") e oscilou (ReadTimeout/ProxyError) | Instabilidade ou bloqueio do SGA | Parar a extração (regra 1.4) e aplicar comprovantes/cidades sem SGA (`cid_pc.py` + `pix.py`) | Regra 1.4 |
+| 09/11 | SGA respondeu "Token BLOQUEADO" no meio da atualização (depois de 500/406/ReadTimeout de manhã) | Excesso de extração no mesmo token (tarefas agendadas + atualização manual) | Parar na hora (regra 1.4); publicar só comprovantes e regras com `pix.py` | Regra 1.4 |
+| 09/11 | Ambiente de trabalho trocado: `comp_registro.json` e as senhas de teste sumiram | O registro só existia na pasta local | Registro refeito a partir das descrições dos arquivos no Drive + coleção `compconf`; agora `kit/comp_registro.json` fica no Kit privado | — |
+| 09/11 | Liderado da equipe Elim com 3 adesões em out/26 na lista de comprovantes; eram 5 | 2 contratos foram cadastrados no SGA no nome do líder; no Power CRM o afiliado era o liderado. O mesmo acontecia em outras 5 equipes (26 adesões de set a nov) | `liderado_pc.py` passa para o liderado (afiliado do Power CRM) a adesão que está no nome do líder | T17 |
+| 09/11 | Painel de vários líderes com abas em branco e erro "reading 'length'" | `liderado_pc.py` criou séries `<equipe>|lid:<nome>` sem `base[]`; a página ordena os liderados pela base | O script cria toda série nova com `base` e conserta as que faltarem | T18 |
 | — | Funções da página inacessíveis no teste (`CP is not defined`) | Código dentro de uma IIFE | Gancho `window.__teste` só em `file://` | T4–T6 |
 
 ## 6.1 Criar acesso de especialista (liderado)
