@@ -8,6 +8,7 @@ Regra da Exodus: o token do SGA já foi bloqueado por excesso de extração (30/
 """
 from __future__ import annotations
 
+import threading
 import time
 
 import httpx2
@@ -31,7 +32,7 @@ def _bloqueado(resposta: httpx2.Response) -> bool:
 
 class ClienteSGA:
     def __init__(self, token: str, usuario: str, senha: str, *, http: httpx2.Client | None = None,
-                 limite_chamadas: int = 3000, espera=time.sleep):
+                 limite_chamadas: int = 3000, espera=time.sleep, intervalo: float = 0.0):
         self.token, self.usuario, self.senha = token, usuario, senha
         self.http = http or httpx2.Client(base_url=BASE, timeout=180)
         self.limite_chamadas = limite_chamadas
@@ -41,6 +42,11 @@ class ClienteSGA:
         # Compartilhado entre as linhas de execução da busca: depois de um bloqueio, nenhuma outra consulta sai,
         # nem a que estava esperando para tentar de novo, nem a renovação do login.
         self.bloqueio: str | None = None
+        # Espaço mínimo entre duas chamadas (somando as linhas de execução). O script antigo abria uma conexão nova a
+        # cada consulta e por isso ia mais devagar; este cliente reaproveita a conexão e pode disparar mais rápido.
+        self.intervalo = intervalo
+        self._proxima = 0.0
+        self._fila = threading.Lock()
 
     def _bloquear(self, motivo: str) -> SGABloqueado:
         self.bloqueio = self.bloqueio or motivo
@@ -50,6 +56,15 @@ class ClienteSGA:
         """Roda antes de toda chamada (login, consulta e cada nova tentativa)."""
         if self.bloqueio is not None:
             raise SGABloqueado(self.bloqueio)
+        if self.intervalo > 0:
+            with self._fila:
+                agora = time.monotonic()
+                vez = max(agora, self._proxima)
+                self._proxima = vez + self.intervalo
+            if vez > agora:
+                self.espera(vez - agora)
+            if self.bloqueio is not None:  # bloqueou enquanto esperava a vez
+                raise SGABloqueado(self.bloqueio)
         self.chamadas += 1
         if self.chamadas > self.limite_chamadas:
             raise SGAErro(f"limite de {self.limite_chamadas} chamadas ao SGA nesta busca atingido")

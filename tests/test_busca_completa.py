@@ -162,3 +162,15 @@ def test_administrador_tira_a_pausa_do_sga(admin, novo_cliente, db):
     db.expire_all()
     assert atu.trava_ativa(db, atu.TRAVA_SGA) is None
     assert admin.get("/api/admin/atualizacoes").json()["historico"][0]["tipo"] == "pausa retirada"
+
+
+def test_bloqueio_no_fim_grava_e_pausa(app, db):
+    _importado(db)
+
+    def rodar(entrada):
+        return Saida(pacotes={"all": {"m": 1}}, resumo={"base_hoje": 9, "sga_bloqueado_no_fim": "o SGA respondeu BLOQUEADO"})
+
+    r = bc.busca_completa(app.state.Sessao, CFG, rodar=rodar, clientes=CLIENTES)
+    assert r["ok"] is True and "bloqueou no fim" in r["mensagem"] and "pausado até" in r["mensagem"]
+    db.expire_all()
+    assert ler(db, "all") == {"m": 1} and atu.trava_ativa(db, atu.TRAVA_SGA) is not None
