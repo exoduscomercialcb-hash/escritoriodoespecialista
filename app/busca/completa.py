@@ -1,6 +1,6 @@
 """A busca completa: monta a entrada a partir do banco, roda o script adaptado e grava os pacotes.
 
-Quem chama: o agendador (1 vez por dia, às 03:52 de Brasília, enquanto o sistema atual estiver no ar) e o botão
+Quem chama: o agendador (todo dia às 06:00 e às 16:00 de Brasília, ver HORARIOS_SGA) e o botão
 "Rodar a busca agora" do painel do administrador. As duas portas respeitam as mesmas travas:
 - SGA pausado (BLOQUEADO ou login recusado duas vezes): não chama o SGA até o próximo horário agendado;
 - uma busca de cada vez (trava "busca_rodando" no banco, que vence sozinha depois de 2 horas);
@@ -35,7 +35,8 @@ DURACAO_MAXIMA = timedelta(hours=2)  # se o servidor cair no meio, a trava vence
 # A busca completa do sistema atual faz alguns milhares de chamadas (base ativa, histórico, boletos, detalhes novos).
 # O limite só existe para uma busca com defeito não martelar o SGA sem fim.
 LIMITE_CHAMADAS_SGA = 20000
-JANELA_DO_AGENDADOR = timedelta(hours=3)  # servidor reiniciado às 04:30 ainda roda a busca das 03:52; às 10h, não
+INTERVALO_SGA = 0.4  # segundos entre chamadas ao SGA (no máximo 2,5 por segundo; ver app/fontes/sga.py)
+JANELA_DO_AGENDADOR = timedelta(hours=3)  # servidor reiniciado às 07:30 ainda roda a busca das 06:00; às 10h, não
 INTERVALO_DO_AGENDADOR = 300  # segundos entre uma conferência e outra
 
 _uma_de_cada_vez = threading.Lock()  # dentro do mesmo servidor; a trava no banco cobre o resto
@@ -147,7 +148,8 @@ def busca_completa(Sessao, cfg: Config, *, tipo: str = "agendada", pessoa_id: in
             a = iniciar(db, "sga", tipo, pessoa_id)
             inicio = agora()
             if clientes is None:
-                sga = ClienteSGA(cfg.sga_token, cfg.sga_usuario, cfg.sga_senha, limite_chamadas=LIMITE_CHAMADAS_SGA)
+                sga = ClienteSGA(cfg.sga_token, cfg.sga_usuario, cfg.sga_senha, limite_chamadas=LIMITE_CHAMADAS_SGA,
+                                 intervalo=INTERVALO_SGA)
                 powercrm = ClientePowerCRM(cfg.powercrm_token) if cfg.powercrm_token else None
                 http_bi = httpx2.Client(timeout=300)
             else:
@@ -161,6 +163,12 @@ def busca_completa(Sessao, cfg: Config, *, tipo: str = "agendada", pessoa_id: in
                 lid = aplicar_liderados(saida.pacotes or {}, saida.cotacoes, entrada.old, entrada.especialistas)
                 log.info("busca: liderados %s", lid)
                 gravados = gravar_saida(db, saida, inicio)
+                tardio = (saida.resumo or {}).get("sga_bloqueado_no_fim")
+                if tardio:  # gravou o que leu, mas o SGA bloqueou no trecho final: não chama mais até o próximo horário
+                    ate = proximo_horario_sga()
+                    travar(db, TRAVA_SGA, ate, tardio)
+                    return concluir(db, a, True, _resumo_txt(saida, gravados) + f" O SGA bloqueou no fim ({tardio}): "
+                                    f"instalações mantidas da busca anterior. SGA pausado até {formatar(ate)}.")
                 return concluir(db, a, True, _resumo_txt(saida, gravados))
             except SGABloqueado as e:
                 db.rollback()
@@ -176,6 +184,7 @@ def busca_completa(Sessao, cfg: Config, *, tipo: str = "agendada", pessoa_id: in
                 return concluir(db, a, False, f"Busca parada por um erro inesperado ({type(e).__name__}). "
                                               "Nada foi gravado. Veja o registro do Render.")
             finally:
+                log.warning("Busca completa: %s chamada(s) ao SGA", getattr(sga, "chamadas", "?"))
                 _liberar(db)
                 if clientes is None:
                     for c in (sga, powercrm, http_bi):

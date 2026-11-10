@@ -95,7 +95,7 @@ class Config:
     sga_senha: str = ""
     powercrm_token: str = ""
     testar_na_partida: bool = False  # testa SGA e Power CRM quando o servidor liga (só no Render)
-    busca_automatica: bool = False  # busca completa diária às 03:52 (só no Render; BUSCA_AUTOMATICA=0 desliga)
+    busca_automatica: bool = False  # busca completa diária às 06:00 e às 16:00 (só no Render; BUSCA_AUTOMATICA=0 desliga)
     extras: dict = field(default_factory=dict)
 
     @property

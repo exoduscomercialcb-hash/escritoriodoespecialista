@@ -120,8 +120,10 @@ def test_teste_do_powercrm(db):
 
 def test_proximo_horario_do_sga():
     sp = timezone(timedelta(hours=-3))
-    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 2, 0, tzinfo=sp)) == datetime(2026, 11, 8, 6, 52, tzinfo=timezone.utc)
-    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 4, 0, tzinfo=sp)) == datetime(2026, 11, 9, 6, 52, tzinfo=timezone.utc)
+    # 06:00 e 16:00 de Brasília = 09:00 e 19:00 UTC
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 2, 0, tzinfo=sp)) == datetime(2026, 11, 8, 9, 0, tzinfo=timezone.utc)
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 7, 0, tzinfo=sp)) == datetime(2026, 11, 8, 19, 0, tzinfo=timezone.utc)
+    assert atu.proximo_horario_sga(datetime(2026, 11, 8, 17, 0, tzinfo=sp)) == datetime(2026, 11, 9, 9, 0, tzinfo=timezone.utc)
 
 
 def test_teste_de_partida_so_quando_devido(app, db):
@@ -148,7 +150,8 @@ def test_painel_de_atualizacoes(admin, novo_cliente, db):
 
 def test_consulta_get_do_sga():
     falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json=[{"codigo": "1", "descricao": "Inadimplência"}]),
-                     httpx2.Response(404), httpx2.Response(403, text="BLOQUEADO"))
+                     httpx2.Response(404), httpx2.Response(403, text="BLOQUEADO"),
+                     httpx2.Response(403, text="BLOQUEADO"))  # o login de conferência também: bloqueio de verdade
     c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=lambda _s: None)
     assert c.get("/listar/situacaomotivo/ativo") == [{"codigo": "1", "descricao": "Inadimplência"}]
     assert c.get("/veiculo/buscar/123/codigo") is None
@@ -160,7 +163,8 @@ def test_consulta_get_do_sga():
 def test_bloqueio_para_a_consulta_que_esperava_nova_tentativa():
     """Busca em paralelo: a consulta A falha na rede e espera; nesse meio tempo a B recebe BLOQUEADO.
     A A não pode tentar de novo (revisão do PR #5)."""
-    falso = SGAFalso(LOGIN_OK, httpx2.ConnectTimeout("rede"), httpx2.Response(403, text="BLOQUEADO"))
+    falso = SGAFalso(LOGIN_OK, httpx2.ConnectTimeout("rede"), httpx2.Response(403, text="BLOQUEADO"),
+                     httpx2.Response(403, text="BLOQUEADO"))  # login de conferência da B: bloqueio de verdade
     c = ClienteSGA("t", "u", "s", http=falso.cliente())
 
     def enquanto_a_espera(_segundos):
@@ -170,9 +174,51 @@ def test_bloqueio_para_a_consulta_que_esperava_nova_tentativa():
     c.espera = enquanto_a_espera
     with pytest.raises(SGABloqueado, match="BLOQUEADO"):
         c.post("/listar/veiculo", {"a": 1})
-    assert len(falso.pedidos) == 3  # login, 1ª tentativa da A e a B; nada depois do bloqueio
+    assert len(falso.pedidos) == 4  # login, 1ª tentativa da A, a B e o login de conferência; nada depois
     with pytest.raises(SGABloqueado):  # nem login novo nem GET saem depois disso
         c.autenticar()
     with pytest.raises(SGABloqueado):
         c.get("/veiculo/buscar/1/codigo")
-    assert len(falso.pedidos) == 3
+    assert len(falso.pedidos) == 4
+
+
+def test_palavra_bloqueado_nos_dados_nao_e_bloqueio():
+    """Alarme falso de 10/11: a lista de status de atendimento do SGA tem um status chamado "Bloqueado"."""
+    lista = [{"codigo_statusatendimentoassociado": "7", "descricao": "BLOQUEADO"}]
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json=lista),
+                     httpx2.Response(200, json={"veiculos": [{"situacao": "Bloqueado"}]}),
+                     httpx2.Response(403, text="Token BLOQUEADO"), httpx2.Response(403, text="Token BLOQUEADO"))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=lambda _s: None)
+    assert c.get("/listar/status-atendimento/todos") == lista
+    assert c.post("/listar/veiculo", {}) == {"veiculos": [{"situacao": "Bloqueado"}]}
+    assert c.bloqueio is None
+    with pytest.raises(SGABloqueado):  # o aviso de verdade (resposta de erro) continua parando
+        c.post("/listar/veiculo", {})
+    falso = SGAFalso(httpx2.Response(200, json={"mensagem": "Usuário bloqueado"}))  # login sem token, com o aviso
+    with pytest.raises(SGABloqueado):
+        ClienteSGA("t", "u", "s", http=falso.cliente()).autenticar()
+
+
+def test_consulta_recusada_com_login_aceito_nao_pausa():
+    """Caso de 10/11 (2ª vez): o SGA recusa só /listar/status-atendimento/todos com erro dizendo "bloqueado".
+    O login de conferência é aceito: o acesso está bom, a busca segue (o script original ignora essa consulta)."""
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(403, text="Acesso bloqueado para esta rota"), LOGIN_OK,
+                     httpx2.Response(200, json={"veiculos": []}))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=lambda _s: None)
+    with pytest.raises(SGAErro, match="recusou a consulta listar/status-atendimento") as erro:
+        c.get("/listar/status-atendimento/todos")
+    assert "rota" not in str(erro.value)  # não repete o texto do SGA
+    assert c.bloqueio is None
+    assert c.post("/listar/veiculo", {}) == {"veiculos": []}  # as outras consultas continuam
+    assert [p.url.path.rsplit("/", 1)[-1] for p in falso.pedidos] == ["autenticar", "todos", "autenticar", "veiculo"]
+
+
+def test_intervalo_entre_chamadas_ao_sga():
+    esperas = []
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json={}), httpx2.Response(200, json={}))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=esperas.append, intervalo=0.4)
+    c.post("/listar/veiculo", {})
+    c.post("/listar/veiculo", {})
+    # a espera de teste não passa o relógio: cada chamada reserva a sua vez 0,4 s depois da anterior
+    assert len(falso.pedidos) == 3 and len(esperas) == 2
+    assert 0.3 < esperas[0] <= 0.4 and abs((esperas[1] - esperas[0]) - 0.4) < 0.05

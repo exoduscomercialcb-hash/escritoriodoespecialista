@@ -8,6 +8,7 @@ Regra da Exodus: o token do SGA já foi bloqueado por excesso de extração (30/
 """
 from __future__ import annotations
 
+import threading
 import time
 
 import httpx2
@@ -24,12 +25,14 @@ class SGAErro(RuntimeError):
 
 
 def _bloqueado(resposta: httpx2.Response) -> bool:
-    return "bloquead" in resposta.text[:2000].lower()
+    """Aviso de bloqueio do SGA: só numa resposta de ERRO. Numa resposta boa, "bloqueado" é dado (ex.: a lista de
+    situações de atendimento tem um status com esse nome) e não pode parar a busca (alarme falso de 10/11)."""
+    return not resposta.is_success and "bloquead" in resposta.text[:2000].lower()
 
 
 class ClienteSGA:
     def __init__(self, token: str, usuario: str, senha: str, *, http: httpx2.Client | None = None,
-                 limite_chamadas: int = 3000, espera=time.sleep):
+                 limite_chamadas: int = 3000, espera=time.sleep, intervalo: float = 0.0):
         self.token, self.usuario, self.senha = token, usuario, senha
         self.http = http or httpx2.Client(base_url=BASE, timeout=180)
         self.limite_chamadas = limite_chamadas
@@ -39,6 +42,11 @@ class ClienteSGA:
         # Compartilhado entre as linhas de execução da busca: depois de um bloqueio, nenhuma outra consulta sai,
         # nem a que estava esperando para tentar de novo, nem a renovação do login.
         self.bloqueio: str | None = None
+        # Espaço mínimo entre duas chamadas (somando as linhas de execução). O script antigo abria uma conexão nova a
+        # cada consulta e por isso ia mais devagar; este cliente reaproveita a conexão e pode disparar mais rápido.
+        self.intervalo = intervalo
+        self._proxima = 0.0
+        self._fila = threading.Lock()
 
     def _bloquear(self, motivo: str) -> SGABloqueado:
         self.bloqueio = self.bloqueio or motivo
@@ -48,9 +56,27 @@ class ClienteSGA:
         """Roda antes de toda chamada (login, consulta e cada nova tentativa)."""
         if self.bloqueio is not None:
             raise SGABloqueado(self.bloqueio)
+        if self.intervalo > 0:
+            with self._fila:
+                agora = time.monotonic()
+                vez = max(agora, self._proxima)
+                self._proxima = vez + self.intervalo
+            if vez > agora:
+                self.espera(vez - agora)
+            if self.bloqueio is not None:  # bloqueou enquanto esperava a vez
+                raise SGABloqueado(self.bloqueio)
         self.chamadas += 1
         if self.chamadas > self.limite_chamadas:
             raise SGAErro(f"limite de {self.limite_chamadas} chamadas ao SGA nesta busca atingido")
+
+    def _conferir_bloqueio(self, r: httpx2.Response, caminho: str) -> None:
+        """Uma consulta voltou com erro dizendo "bloqueado". Confere com um login novo (1 chamada):
+        - login recusado ou BLOQUEADO: é o bloqueio do acesso (autenticar levanta SGABloqueado e tudo para);
+        - login aceito: o acesso está bom; o SGA recusou só esta consulta (SGAErro, como uma falha comum).
+        Caso de 10/11: /listar/status-atendimento/todos era recusada assim e a busca parava toda vez nela."""
+        rota = "/".join(caminho.split("?")[0].strip("/").split("/")[:2])  # ex.: listar/status-atendimento (sem códigos)
+        self.autenticar()
+        raise SGAErro(f"o SGA recusou a consulta {rota} (código {r.status_code}); o login continua aceito")
 
     def autenticar(self) -> None:
         self._contar()
@@ -69,6 +95,8 @@ class ClienteSGA:
                 token_usuario = r.json().get("token_usuario")
             except ValueError:
                 token_usuario = None
+        if not token_usuario and "bloquead" in r.text[:2000].lower():
+            raise self._bloquear("o SGA respondeu BLOQUEADO no login")
         if not token_usuario:
             raise SGAErro(f"o SGA não devolveu o token de acesso (código {r.status_code})")
         self._cabecalho = {"Authorization": f"Bearer {token_usuario}"}
@@ -86,7 +114,7 @@ class ClienteSGA:
                 self.espera(5 * (tentativa + 1))
                 continue
             if _bloqueado(r):
-                raise self._bloquear(f"o SGA respondeu BLOQUEADO em {caminho}")
+                self._conferir_bloqueio(r, caminho)
             if r.status_code in (401, 403):
                 recusas += 1
                 if recusas >= 2:
@@ -117,7 +145,7 @@ class ClienteSGA:
                 self.espera(5 * (tentativa + 1))
                 continue
             if _bloqueado(r):
-                raise self._bloquear(f"o SGA respondeu BLOQUEADO em {caminho.split('/')[1] if '/' in caminho else caminho}")
+                self._conferir_bloqueio(r, caminho)
             if r.status_code in (401, 403):
                 recusas += 1
                 if recusas >= 2:

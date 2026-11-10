@@ -302,7 +302,8 @@
     try { r = await api('/api/admin/atualizacoes'); } catch (e) { toast(e.message); return; }
     $('atuBuscar').hidden = EU.pessoa.tipo !== 'admin';
     const pausa = $('atuPausa');
-    pausa.hidden = !r.sga_pausado;
+    $('atuPausaBox').hidden = !r.sga_pausado;
+    $('atuRetirarPausa').hidden = EU.pessoa.tipo !== 'admin';
     if (r.sga_pausado) pausa.textContent = 'SGA pausado até ' + r.sga_pausado.ate_txt + ': ' + r.sga_pausado.motivo + '. Nenhuma busca chama o SGA antes disso.';
     $('atuProxima').textContent = r.busca_automatica ? 'Próxima busca completa do SGA: ' + r.proxima_busca_sga_txt + '.'
       : 'Busca automática desligada neste servidor (só roda pelo botão).';
@@ -353,6 +354,14 @@
     b.disabled = false;
   });
 
+  $('atuRetirarPausa').addEventListener('click', async () => {
+    if (!confirm('Tire a pausa só se tiver certeza de que o acesso do SGA está funcionando (por exemplo: o sistema atual se atualizou normalmente). Se o SGA tiver bloqueado de verdade, insistir piora o bloqueio. Tirar a pausa?')) return;
+    try {
+      const r = await api('/api/admin/atualizacoes/retirar-pausa', { corpo: {} });
+      $('atuResultado').replaceChildren(h('p', { class: r.ok ? 'ok-msg' : 'err' }, r.mensagem));
+      carregarAtualizacoes();
+    } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
+  });
   $('atuBuscar').addEventListener('click', async () => {
     if (!confirm('A busca completa usa o mesmo acesso do SGA que o sistema atual e leva alguns minutos. Não rode no mesmo horário das tarefas do sistema atual. Rodar agora?')) return;
     const b = $('atuBuscar'); b.disabled = true;

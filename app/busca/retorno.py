@@ -492,14 +492,21 @@ def rodar(entrada: Entrada) -> Saida:
     TIPO_INST = {"100030": "B", "100029": "R"}          # INSTALAÇÃO NA BASE (R$ 50) · INSTALAÇÃO EXTERNA = residência (R$ 100)
     ST_CANC = {"15", "18"}                              # atendimento CANCELADO / CANCELAR INSTALAÇÃO: não conta
     INST = {}
+    TARDIO = []   # ADAPTAÇÃO: motivo do bloqueio do SGA no trecho final (opcional), se houver
+    INST_ANT = {(a.get("m"), pl_(a.get("pl")) or a.get("ch")): (a["inst"], a.get("instd"), a.get("instst"))
+                for a in (OLD.get("ades") or []) if isinstance(a, dict) and a.get("inst")}
     CMS = [k for k in LIVE if k >= COMP_DESDE]
     if CMS:
         d0 = dt.date.fromisoformat(CMS[0] + "-01") - dt.timedelta(days=45)
         STA = {}
+        # ADAPTAÇÃO (10/11): o trecho final (instalações e detalhes dos cancelados) é opcional no script original: se o
+        # SGA recusa, ele segue e publica. Aqui, um bloqueio nesse trecho para as chamadas ao SGA (não insiste: o cliente
+        # já não deixa sair nenhuma), guarda o motivo em TARDIO e a busca termina; as instalações vêm da busca anterior.
         try: STA = {x["codigo_statusatendimentoassociado"]: x["descricao"] for x in _sga("get", "/listar/status-atendimento/todos")}
-        except SGABloqueado: raise                      # ADAPTAÇÃO: o SGA bloqueado não pode ser engolido aqui
+        except SGABloqueado as e_: TARDIO.append(str(e_))
         except Exception: pass
         for tp in TIPO_INST:
+          if TARDIO: break
           pg = 0
           try:
             while True:
@@ -513,9 +520,10 @@ def rodar(entrada: Entrada) -> Saida:
                         if kk not in INST or INST[kk]["d"] < quando: INST[kk] = reg      # vale o lançamento mais recente
                 if len(it) < 5000: break
                 pg += 1
-          except SGABloqueado: raise                    # ADAPTAÇÃO: o SGA bloqueado não pode ser engolido aqui
+          except SGABloqueado as e_: TARDIO.append(str(e_))  # ADAPTAÇÃO: ver acima
           except (Exception, SystemExit) as e_: log("  atendimentos de instalação não lidos:", tp, str(e_)[:80])   # não derruba a atualização
         log("  instalações (atendimentos do SGA):", len(INST), "veículos")
+        if TARDIO: log("  SGA bloqueou no trecho final; instalações mantidas da busca anterior:", len(INST_ANT))
     # comprovantes enviados (planilha de registro do Apps Script, baixada pela tarefa agendada) e marcações da coordenação/financeiro (banco do Retorno)
     # ADAPTAÇÃO: os dois arquivos do Kit vêm na entrada (None = arquivo ausente: vale o padrão, como antes)
     def _jl(v, dflt):
@@ -549,6 +557,8 @@ def rodar(entrada: Entrada) -> Saida:
                 if q.get("cid"): a_["cid"] = tc2(q["cid"])                         # cidade do associado (Power CRM): Região dos Lagos desconta R$ 50 do rastreador
                 ins = INST.get(plx) if plx else None
                 ins = ins or INST.get("cv" + cv)
+                ant = INST_ANT.get((k, plx or chx)) if TARDIO and not ins else None   # ADAPTAÇÃO: ver TARDIO
+                if ant: a_["inst"], a_["instd"], a_["instst"] = ant
                 if ins: a_["inst"], a_["instd"], a_["instst"] = ins["i"], "/".join(reversed(ins["d"][:10].split("-"))), ins["st"]
                 ck = plx or chx or ("SP" + re.sub(r"[^A-Z]", "", N(a_["n"]))[:10] + re.sub(r"\D", "", a_["dc"])[:4])   # mesma chave da página
                 c0 = CMP.get(k + "|" + ck) if ck else None
@@ -587,7 +597,8 @@ def rodar(entrada: Entrada) -> Saida:
                     if h[4].strip().lower() not in GEN and not h[4].upper().startswith("TASK"): o_ = h[4]; break
         o_ = "" if o_.strip().lower() in GEN or o_.upper().startswith("TASK") else limpa(o_)
         return (cap(m_) if m_ else ""), o_
-    detalhes(list(cd))
+    try: detalhes([] if TARDIO else list(cd))     # ADAPTAÇÃO: depois de um bloqueio no trecho final, só o cache (DET)
+    except SGABloqueado as e_: TARDIO.append(str(e_))
     def tc(x): return " ".join(w if w.lower() in ("de", "da", "do", "dos", "das", "e") else w.capitalize() for w in str(x or "").lower().split())
     CANC = []
     for cv, dc in cd.items():
@@ -878,4 +889,5 @@ def rodar(entrada: Entrada) -> Saida:
                                   det={k: v for k, v in DET.items() if k in {str(c) for c in cd} or k in {str(x["codigo_veiculo"]) for k_ in LIVE for x in ATIV[k_]}}, vcache=VC), lambda n_: (TEAMOF[n_].most_common(1) or [("", 0)])[0][0], LDALL), LDALL))
     # ADAPTAÇÃO: em vez de gravar a página e imprimir o resumo, devolve os pacotes e o resumo
     return Saida(pacotes=out, novos_cancelados=NOVOS_SAIDA, cotacoes=list(COT.values()) if COT else None,
-                 resumo={"atualizado": META["atualizado"], "base_hoje": len(ATV), "cancelados_recentes": len(CANC), "bi": BI_OK})
+                 resumo={"atualizado": META["atualizado"], "base_hoje": len(ATV), "cancelados_recentes": len(CANC), "bi": BI_OK,
+                         "sga_bloqueado_no_fim": TARDIO[0] if TARDIO else None})

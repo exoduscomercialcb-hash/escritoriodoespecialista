@@ -71,5 +71,5 @@ O arquivo tem dados pessoais de associados: entra no sistema novo pelo painel (I
 ## Decisões pendentes do Rafael
 
 1. Quando desligar as tarefas agendadas do sistema atual e passar a busca completa para 2 vezes ao dia (5:52 e 15:52)
-   mais a leve de hora em hora (seção 3 da especificação). Até lá: 1 vez por dia, às 03:52.
+   mais a leve de hora em hora (seção 3 da especificação). Até lá (decisão de 10/11): 2 vezes por dia, às 06:00 e às 16:00.
 2. Se a coordenação também vê o painel do administrador (`PAINEL_COORDENACAO=1` no Render).
