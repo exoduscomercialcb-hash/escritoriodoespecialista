@@ -19,6 +19,8 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 - **09/11:** cópias do sistema atual atualizadas (eram de 07/11): regra da adesão do liderado no nome do líder
   (`app/busca/liderado.py`), plantão sem placa (chassi ou nome) e séries sempre com `base[]`. A busca automática
   roda com elas.
+- **10/11:** link curto de campanha `/bf` (Black Friday): abre o WhatsApp do especialista com a mensagem do lead
+  já escrita. Lista em `LINKS_CURTOS` (`app/rotas.py`); teste `tests/test_links_curtos.py`.
 - **Próximo:** parte 2.4, o botão "Atualizar meus dados". Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa
