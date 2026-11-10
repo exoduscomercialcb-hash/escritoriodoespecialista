@@ -192,7 +192,8 @@ def test_termina_e_devolve_os_pacotes_de_todos_os_acessos():
     assert "all" in s.pacotes
     assert {"t:LUA", "t:PE NO CHAO", "t:RECREIO"} <= set(s.pacotes)   # um pacote por equipe com líder (dicionário LEAD)
     assert {"e:ESPECIALISTA INVENTADO UM", "e:ESPECIALISTA INVENTADA DOIS"} <= set(s.pacotes)
-    assert s.resumo == {"atualizado": "2026-11-09T03:52-03:00", "base_hoje": 5, "cancelados_recentes": 2, "bi": False}
+    assert s.resumo == {"atualizado": "2026-11-09T03:52-03:00", "base_hoje": 5, "cancelados_recentes": 2, "bi": False,
+                        "sga_bloqueado_no_fim": None}
     assert s.novos_cancelados == {}
     assert any("BI Brasil Atuarial não respondeu" in x for x in _linhas(registro))
     # pacotes já sem criptografia, no formato que a página desenha
@@ -251,7 +252,6 @@ def test_nao_altera_o_estado_anterior_recebido():
 
 
 @pytest.mark.parametrize("onde", ["/listar/veiculo", "/listar/alteracao-veiculos", "/listar/boleto-associado-veiculo",
-                                  "/listar/historico-atendimento-associado", "/listar/status-atendimento/todos",
                                   "/listar/situacaomotivo/ativo", "/veiculo/buscar/"])
 def test_sga_bloqueado_sobe_sem_ser_engolido(onde):
     sga = SGAFalso(bloquear_em=onde)
@@ -265,3 +265,20 @@ def test_depois_do_bloqueio_a_fila_das_linhas_de_execucao_nao_chama_o_sga():
     with pytest.raises(SGABloqueado):
         rodar(entrada(sga=sga))
     assert sga.chamadas_depois_do_bloqueio <= 1   # no máximo a que já estava em andamento na outra linha de execução
+
+
+@pytest.mark.parametrize("onde", ["/listar/status-atendimento/todos", "/listar/historico-atendimento-associado"])
+def test_bloqueio_no_trecho_final_termina_sem_insistir_e_mantem_as_instalacoes(onde):
+    """Caso de 10/11: o SGA bloqueava sempre no trecho final (instalações), que é opcional no script original.
+    A busca termina com o que já leu, não chama mais o SGA e mantém as instalações da busca anterior."""
+    primeira = rodar(entrada())
+    com_inst = [a for a in primeira.pacotes["all"]["ades"] if a.get("inst")]
+    assert com_inst  # os dados inventados têm instalação lançada
+    sga = SGAFalso(bloquear_em=onde)
+    s = rodar(entrada(sga=sga, old=primeira.pacotes["all"]))
+    assert "BLOQUEADO" in s.resumo["sga_bloqueado_no_fim"]
+    assert sga.chamadas_depois_do_bloqueio == 0
+    assert s.resumo["base_hoje"] == 5 and "all" in s.pacotes and "t:LUA" in s.pacotes
+    depois = {(a["m"], a["pl"]): (a.get("inst"), a.get("instd")) for a in s.pacotes["all"]["ades"]}
+    for a in com_inst:
+        assert depois[(a["m"], a["pl"])] == (a["inst"], a["instd"])

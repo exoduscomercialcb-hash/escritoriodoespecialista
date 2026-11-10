@@ -211,3 +211,14 @@ def test_consulta_recusada_com_login_aceito_nao_pausa():
     assert c.bloqueio is None
     assert c.post("/listar/veiculo", {}) == {"veiculos": []}  # as outras consultas continuam
     assert [p.url.path.rsplit("/", 1)[-1] for p in falso.pedidos] == ["autenticar", "todos", "autenticar", "veiculo"]
+
+
+def test_intervalo_entre_chamadas_ao_sga():
+    esperas = []
+    falso = SGAFalso(LOGIN_OK, httpx2.Response(200, json={}), httpx2.Response(200, json={}))
+    c = ClienteSGA("t", "u", "s", http=falso.cliente(), espera=esperas.append, intervalo=0.4)
+    c.post("/listar/veiculo", {})
+    c.post("/listar/veiculo", {})
+    # a espera de teste não passa o relógio: cada chamada reserva a sua vez 0,4 s depois da anterior
+    assert len(falso.pedidos) == 3 and len(esperas) == 2
+    assert 0.3 < esperas[0] <= 0.4 and abs((esperas[1] - esperas[0]) - 0.4) < 0.05
