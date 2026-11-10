@@ -54,6 +54,15 @@ class ClienteSGA:
         if self.chamadas > self.limite_chamadas:
             raise SGAErro(f"limite de {self.limite_chamadas} chamadas ao SGA nesta busca atingido")
 
+    def _conferir_bloqueio(self, r: httpx2.Response, caminho: str) -> None:
+        """Uma consulta voltou com erro dizendo "bloqueado". Confere com um login novo (1 chamada):
+        - login recusado ou BLOQUEADO: é o bloqueio do acesso (autenticar levanta SGABloqueado e tudo para);
+        - login aceito: o acesso está bom; o SGA recusou só esta consulta (SGAErro, como uma falha comum).
+        Caso de 10/11: /listar/status-atendimento/todos era recusada assim e a busca parava toda vez nela."""
+        rota = "/".join(caminho.split("?")[0].strip("/").split("/")[:2])  # ex.: listar/status-atendimento (sem códigos)
+        self.autenticar()
+        raise SGAErro(f"o SGA recusou a consulta {rota} (código {r.status_code}); o login continua aceito")
+
     def autenticar(self) -> None:
         self._contar()
         try:
@@ -90,7 +99,7 @@ class ClienteSGA:
                 self.espera(5 * (tentativa + 1))
                 continue
             if _bloqueado(r):
-                raise self._bloquear(f"o SGA respondeu BLOQUEADO em {caminho}")
+                self._conferir_bloqueio(r, caminho)
             if r.status_code in (401, 403):
                 recusas += 1
                 if recusas >= 2:
@@ -121,7 +130,7 @@ class ClienteSGA:
                 self.espera(5 * (tentativa + 1))
                 continue
             if _bloqueado(r):
-                raise self._bloquear(f"o SGA respondeu BLOQUEADO em {caminho.split('/')[1] if '/' in caminho else caminho}")
+                self._conferir_bloqueio(r, caminho)
             if r.status_code in (401, 403):
                 recusas += 1
                 if recusas >= 2:
