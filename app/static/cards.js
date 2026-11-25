@@ -848,7 +848,13 @@ document.querySelectorAll('#dsPl [data-pl]').forEach(b => b.addEventListener('cl
 let RTCFG = { meses: [] };
 try { RTCFG = JSON.parse(document.getElementById('rtcfg').textContent); } catch (e) {}
 const RT = { db: null, assets: null, uid: null, mine: null, all: {}, files: [], ready: false, err: '' };
-const rtEspNome = () => S.admin ? ($('rtEsp').value || '') : (S.specs[0] ? S.specs[0].nome : '');
+const rtEspNome = () => S.admin || RT.esc ? ($('rtEsp').value || '') : (S.specs[0] ? S.specs[0].nome : '');   // SISTEMA NOVO: RT.esc = líder escolhe o especialista
+// SISTEMA NOVO: sem as chaves do login antigo (RING.keys), os tokens dos links do Apps Script vêm prontos de /api/dados
+// (d.gas = {comp: {EQUIPE: token}, rt: {ESPECIALISTA: token}}, só os que a pessoa pode usar), com as chaves normalizadas
+// como o N() do servidor (sem acento, maiúsculas, espaços simples).
+const NK = s => String(s || '').normalize('NFKD').replace(/[^\x00-\x7f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+const gasNovo = () => !!(RING && RING.__novo && !(RING.keys && RING.keys.length));
+const gasTok = (tipo, nome) => (((RING && RING.__gas) || {})[tipo] || {})[NK(nome)] || '';
 function rtEncerrado(k) { const p = (RTCFG.prazos || {})[k]; return !!p && Date.now() > new Date(p).getTime(); }
 function rtPrazo(k) { const p = (RTCFG.prazos || {})[k]; return p ? new Date(p).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', ' às') : ''; }
 async function setupRT() {
@@ -860,6 +866,10 @@ async function setupRT() {
   if (S.admin) {
     $('rtEspL').hidden = false;
     $('rtEsp').innerHTML = '<option value="">Escolha o especialista…</option>' + S.specs.map(sp => sp.nome).sort().map(n => `<option>${esc(n)}</option>`).join('');
+  } else if (gasNovo() && S.specs.length > 1) {   // SISTEMA NOVO: o líder recebe os especialistas das equipes dele e escolhe de quem é o print (começa nele mesmo)
+    RT.esc = true; $('rtEspL').hidden = false;
+    const eu = NK(RING.__nome);
+    $('rtEsp').innerHTML = '<option value="">Escolha o especialista…</option>' + S.specs.map(sp => sp.nome).sort().map(n => `<option${NK(n) === eu ? ' selected' : ''}>${esc(n)}</option>`).join('');
   }
   renderRT();
   try { RT.db = await window.claude.use('db'); } catch (e) { RT.db = null; }
@@ -881,9 +891,16 @@ function rtItems() {
 async function rtGasLink() {
   const box = $('rtGasBox'); if (!RTCFG.gas || !RING) { box.hidden = true; return; }
   const nome = rtEspNome(); const i = S.specs.findIndex(sp => sp.nome === nome);
-  if (i < 0 || !RING.keys[i]) { box.hidden = !S.admin; $('rtGas').removeAttribute('href'); return; }
-  const kb = b64(RING.keys[i]), pre = te.encode('rt-tok|'), all = new Uint8Array(pre.length + kb.length); all.set(pre); all.set(kb, pre.length);
-  const tok = [...new Uint8Array(await crypto.subtle.digest('SHA-256', all))].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  if (gasNovo()) {   // SISTEMA NOVO: token pronto do especialista escolhido; sem token (ou sem nenhum), o botão fica escondido
+    const rt = (RING.__gas || {}).rt || {};
+    if (i < 0 || !gasTok('rt', nome)) { box.hidden = !(S.admin && i < 0 && Object.keys(rt).length); $('rtGas').removeAttribute('href'); return; }
+  } else if (i < 0 || !RING.keys[i]) { box.hidden = !S.admin; $('rtGas').removeAttribute('href'); return; }
+  let tok;
+  if (gasNovo()) tok = gasTok('rt', nome);   // SISTEMA NOVO
+  else {
+    const kb = b64(RING.keys[i]), pre = te.encode('rt-tok|'), all = new Uint8Array(pre.length + kb.length); all.set(pre); all.set(kb, pre.length);
+    tok = [...new Uint8Array(await crypto.subtle.digest('SHA-256', all))].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  }
   if (!$('rtMes').value || rtEncerrado($('rtMes').value)) { box.hidden = true; return; }
   $('rtGas').href = RTCFG.gas + '?k=' + tok + '&m=' + encodeURIComponent($('rtMes').value || ''); box.hidden = false;
 }
@@ -1220,7 +1237,10 @@ async function renderCP() {
   $('cpListS').textContent = 'Amarelo = anexado (verificação de hora em hora, sem ler o valor) · azul = valor conferido (atualização completa, 2 vezes ao dia ou pelo coordenador) · verde-escuro = baixa do financeiro' + (confere ? ' · coluna Pago: lance o valor já recebido (avulso, linha a linha) ou marque várias adesões e use os botões abaixo (pagamento acumulado e validação em lote)' : '') + (CP.db && CP.live ? '' : ' · validações e observações aparecem aqui na próxima atualização') + (RTCFG.comp ? '' : ' · o envio de comprovantes fica disponível assim que a página de envio do Google for publicada');
   const gasOk = !!(RTCFG.gas && RTCFG.comp);
   const toks = {};
-  if (gasOk && E.esp) { if (d.cptok) for (const x of L) toks[x.r.t] = d.cptok; }
+  if (gasOk && gasNovo() && !(E.esp && d.cptok)) {   // SISTEMA NOVO: token pronto do líder da equipe da adesão (d.gas.comp)
+    const um = E.admin ? '' : Object.values((RING.__gas || {}).comp || {})[0] || '';   // especialista e líder: o da equipe dele, como o cptok e o cpKeyFor do sistema atual
+    for (const x of L) { const t = gasTok('comp', x.r.t) || um; if (t) toks[x.r.t] = t; }
+  } else if (gasOk && E.esp) { if (d.cptok) for (const x of L) toks[x.r.t] = d.cptok; }
   else if (gasOk) for (const x of L) { const k = cpKeyFor(x.r.t); if (k && !toks[x.r.t]) toks[x.r.t] = await tokOf(k); }
   const cpLoc = (() => { try { return JSON.parse(localStorage.getItem('cpSent') || '{}'); } catch (e) { return {}; } })();
   const cpLs = r => { const t = cpLoc[r.m + '|' + cpKey(r)]; return !!t && Date.now() - t < 3 * 864e5; };
@@ -1708,7 +1728,8 @@ $('logout').addEventListener('click', () => { location.href = '/auth/sair'; });
   } catch (e) { $('carregando').textContent = 'Não foi possível carregar o escritório. Aperte F5 para tentar de novo.'; return; }
   $('carregando').hidden = true;
   PAINEL = !!d.painel;
-  const ring = { __novo: true, __pacote: d.pacote, admin: !!d.perfil.admin, fin: !!d.perfil.fin, cad: !!d.perfil.cad, ids: [], keys: [] };
+  // SISTEMA NOVO: __gas = tokens dos links do Apps Script (só os da pessoa); __nome = nome do cadastro (o líder começa nele no envio de prints)
+  const ring = { __novo: true, __pacote: d.pacote, __gas: d.gas || { comp: {}, rt: {} }, __nome: d.perfil.nome || '', admin: !!d.perfil.admin, fin: !!d.perfil.fin, cad: !!d.perfil.cad, ids: [], keys: [] };
   let specs = d.specs.map(s => ({ nome: s.nome, equipes: s.equipes || [], rows: s.rows || [] }));
   // sem lista do remarketing ainda: a tela de quem não é da coordenação precisa de pelo menos o próprio nome
   if (!specs.length && !d.perfil.admin) specs = [{ nome: d.perfil.nome || '', equipes: d.perfil.equipes || [], rows: [] }];

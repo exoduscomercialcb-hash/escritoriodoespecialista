@@ -128,3 +128,77 @@ def test_importacao_traz_as_marcacoes(admin, db):
     r = _importar(admin, exp)
     assert r["marcacoes"] == 2  # a coleção desconhecida é ignorada
     assert admin.get("/api/banco/comp/regras").json()["data"] == {"ABC": {"plt": True}}
+
+
+# tokens dos links do Apps Script (25/11): inventados, 16 letras hexadecimais como os do sistema atual
+TOK = {"pe": "a1a1a1a1a1a1a1a1", "lua": "b2b2b2b2b2b2b2b2", "exodus": "c3c3c3c3c3c3c3c3",
+       "fulano": "d4d4d4d4d4d4d4d4", "ciclana": "e5e5e5e5e5e5e5e5", "vendedora": "f6f6f6f6f6f6f6f6"}
+
+
+def _exportacao_com_tokens():
+    exp = copy.deepcopy(EXPORTACAO)
+    exp["evo"]["e"]["Ciclana Inventada"]["eq"] = "PÉ NO CHÃO"  # a equipe do pacote (a mesma do cptok do sistema atual)
+    exp["evo"]["e"]["Vendedora Inventada"] = {"esp": "Vendedora Inventada", "eq": "EXODUS BENEFÍCIOS", "visao": "da vendedora"}
+    exp["especialistas"].append({"nome": "Vendedora Inventada", "sga": [], "eqs": ["Exodus Benefícios"], "rows": []})
+    exp["tokens_gas"] = {"comp": {"Pé no Chão": TOK["pe"], "LUA": TOK["lua"], "EXODUS BENEFÍCIOS": TOK["exodus"]},
+                         "rt": {"Fulano Inventado": TOK["fulano"], "Ciclana Inventada": TOK["ciclana"],
+                                "Vendedora Inventada": TOK["vendedora"]}}
+    return exp
+
+
+def test_cada_um_recebe_so_os_seus_tokens_do_apps_script(admin, novo_cliente, db):
+    _importar(admin, _exportacao_com_tokens())
+    pessoas = {
+        "coord@exemplo.com.br": ("coordenacao", None, "Coordenacao Inventada"),
+        "cad@exemplo.com.br": ("cadastro", None, "Cadastro Inventado"),
+        "fin@exemplo.com.br": ("financeiro", None, "Financeiro Inventado"),
+        "lider@exemplo.com.br": ("lider", "Pé no Chão", "Lider Inventado"),
+        "fulano@exemplo.com.br": ("especialista", "Lua", "Fulano de Tal Inventado"),  # casa pelo nome do SGA
+        "ciclana@exemplo.com.br": ("especialista", "Lua", "Ciclana Inventada"),  # equipe pelo pacote, não pelo cadastro
+        "vend@exemplo.com.br": ("vendedora_interna", "Exodus Benefícios", "Vendedora Inventada"),
+        "outro@exemplo.com.br": ("especialista", "Lua", "Outro Inventado"),  # não casa com ninguém
+    }
+    for email, (tipo, equipe, nome) in pessoas.items():
+        criar_pessoa(db, nome=nome, email=email, tipo=tipo, equipe=equipe)
+    vistos = {}
+    for email in pessoas:
+        c = novo_cliente()
+        entrar(c, email)
+        vistos[email.split("@")[0]] = c.get("/api/dados").json()
+
+    todos_comp = {"PE NO CHAO": TOK["pe"], "LUA": TOK["lua"], "EXODUS BENEFICIOS": TOK["exodus"]}
+    todos_rt = {"FULANO INVENTADO": TOK["fulano"], "CICLANA INVENTADA": TOK["ciclana"],
+                "VENDEDORA INVENTADA": TOK["vendedora"]}
+    esperado = {
+        "coord": {"comp": todos_comp, "rt": todos_rt},
+        "cad": {"comp": todos_comp, "rt": todos_rt},
+        "fin": {"comp": todos_comp, "rt": {}},  # o financeiro não envia print
+        "lider": {"comp": {"PE NO CHAO": TOK["pe"]}, "rt": {"CICLANA INVENTADA": TOK["ciclana"]}},
+        "fulano": {"comp": {"LUA": TOK["lua"]}, "rt": {"FULANO INVENTADO": TOK["fulano"]}},
+        "ciclana": {"comp": {"PE NO CHAO": TOK["pe"]}, "rt": {"CICLANA INVENTADA": TOK["ciclana"]}},
+        "vend": {"comp": {"EXODUS BENEFICIOS": TOK["exodus"]}, "rt": {"VENDEDORA INVENTADA": TOK["vendedora"]}},
+        "outro": {"comp": {}, "rt": {}},
+    }
+    for quem, gas in esperado.items():
+        resposta = vistos[quem]
+        assert resposta["gas"] == gas, quem
+        assert "tokens_gas" not in str(resposta), quem  # o bloco do banco nunca sai como está
+        meus = set(gas["comp"].values()) | set(gas["rt"].values())
+        for t in set(TOK.values()) - meus:  # nenhum token de outra equipe ou de outro especialista em lugar nenhum
+            assert t not in str(resposta), (quem, t)
+    assert admin.get("/api/dados").json()["gas"] == {"comp": todos_comp, "rt": todos_rt}
+
+
+def test_tokens_do_apps_script_recusa_chave_e_formato_errado(admin):
+    _importar(admin, _exportacao_com_tokens())
+    for errado in ({"comp": {"LUA": "q8Zf2Kx0yP1mN3bV5cX7zL9aS4dF6gH8jK0lQ2wE4rT="}},  # uma chave, não um token
+                   {"comp": ["LUA"]}, {"chaves": {}}, "a1a1a1a1a1a1a1a1"):
+        exp = copy.deepcopy(EXPORTACAO)
+        exp["tokens_gas"] = errado
+        r = admin.post("/api/admin/importar-sistema-atual", json=exp)
+        assert r.status_code == 400 and "tokens_gas" in r.json()["erro"], errado
+    # a recusa não apagou a importação anterior
+    assert admin.get("/api/dados").json()["gas"]["comp"]["LUA"] == TOK["lua"]
+    # importar de novo sem o bloco: os tokens antigos saem junto com o resto
+    _importar(admin)
+    assert admin.get("/api/dados").json()["gas"] == {"comp": {}, "rt": {}}

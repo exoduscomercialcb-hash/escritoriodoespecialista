@@ -7,6 +7,7 @@ Se o Playwright não estiver instalado, o teste é pulado; no GitHub Actions ele
 from __future__ import annotations
 
 import os
+import re
 import socket
 import threading
 import time
@@ -366,4 +367,88 @@ def test_banco_da_pagina_so_avisa_quando_o_documento_muda(servidor_com_dados, na
     pg.wait_for_function("() => window._avisos.length === 2")
     assert pg.evaluate("window._avisos") == [None, 1]
     assert not erros, erros
+    ctx.close()
+
+
+# ---------------------------------------------------------------- botões do Apps Script (anexar comprovante e prints)
+
+GAS_INVENTADO = "https://script.google.com/macros/s/INVENTADO/exec"
+TOK_LUA, TOK_ESP, TOK_LIDER = "0a0a0a0a0a0a0a0a", "1b1b1b1b1b1b1b1b", "2c2c2c2c2c2c2c2c"  # inventados
+
+
+@pytest.fixture(scope="module")
+def servidor_com_tokens(tmp_path_factory):
+    def preparar(s):
+        guardar(s, "rtcfg", {"meses": [], "prazos": {}, "comp": True, "gas": GAS_INVENTADO}, "importacao")
+        guardar(s, "t:LUA", dict(PACOTE_ALL, team="LUA"), "importacao")
+        pessoal = dict(PACOTE_ALL, team="", teams=[], leaders={}, series={"ALL|equipe": PACOTE_ALL["series"]["ALL|equipe"]})
+        guardar(s, "e:ESPECIALISTA INVENTADO", dict(pessoal, esp="Especialista Inventado", eq="LUA"), "importacao")
+        guardar(s, "e:SEM TOKEN INVENTADA", dict(pessoal, esp="Sem Token Inventada", eq="ELITE",
+                                                 ades=[dict(PACOTE_ALL["ades"][0], t="ELITE", esp="Sem Token Inventada")]),
+                "importacao")
+        for nome, eq in (("Especialista Inventado", "LUA"), ("Outro Especialista Inventado", "LUA"),
+                         ("Lider Inventado", "LUA"), ("Sem Token Inventada", "ELITE")):
+            guardar(s, "esp:" + nome.upper(), {"id": None, "nome": nome, "sga": [], "eqs": [eq]}, "importacao")
+            guardar(s, "rm:" + nome.upper(), [], "importacao")
+        # como a importação guarda: chaves normalizadas. Sem token para o "Outro" e para a equipe ELITE.
+        guardar(s, "tokens_gas", {"comp": {"LUA": TOK_LUA},
+                                  "rt": {"ESPECIALISTA INVENTADO": TOK_ESP, "LIDER INVENTADO": TOK_LIDER}}, "importacao")
+        for nome, tipo, equipe in (("Especialista Inventado", "especialista", "Lua"), ("Lider Inventado", "lider", "Lua"),
+                                   ("Sem Token Inventada", "especialista", "Elite")):
+            s.add(Pessoa(nome=nome, email=nome.split()[0].lower() + ".tok@exemplo.com.br", tipo=tipo, equipe=equipe,
+                         situacao="ativo"))
+    with _subir_servidor(tmp_path_factory.mktemp("banco_tokens") / "teste.db", preparar) as url:
+        yield url
+
+
+def _entrar_com_tokens(navegador, servidor, email):
+    ctx, pg, erros = _pagina(navegador)
+    ao_google: list[str] = []
+    pg.on("request", lambda r: ao_google.append(r.url) if "script.google.com" in r.url else None)
+    pg.goto(servidor + "/teste/entrar?email=" + email)
+    expect(pg).to_have_url(servidor + "/escritorio")
+    return ctx, pg, erros, ao_google
+
+
+def test_especialista_anexa_comprovante_com_o_token_da_equipe(servidor_com_tokens, navegador):
+    ctx, pg, erros, ao_google = _entrar_com_tokens(navegador, servidor_com_tokens, "especialista.tok@exemplo.com.br")
+    pg.click('#home [data-go="cp"]')
+    botao = pg.locator("#cpList a[data-cpsent]")
+    expect(botao).to_have_text("Anexar comprovante (foto ou PDF)")
+    expect(botao).to_have_attribute("href", GAS_INVENTADO + "?tipo=comp&k=" + TOK_LUA + "&m=2026-11&pl=TST2B01"
+                                    "&n=Associado%20Adesao%20Inventado&esp=Especialista%20Inventado&eq=Lua")
+    assert pg.locator('[data-view="rt"]').is_hidden()  # especialista não envia print de reativação
+    assert not ao_google and not erros, (ao_google, erros)
+    ctx.close()
+
+
+def test_sem_token_nao_aparece_o_botao(servidor_com_tokens, navegador):
+    ctx, pg, erros, ao_google = _entrar_com_tokens(navegador, servidor_com_tokens, "sem.tok@exemplo.com.br")
+    pg.click('#home [data-go="cp"]')
+    expect(pg.locator("#cpList .pill.bad")).to_have_text("Sem comprovante")
+    assert pg.locator("#cpList a[data-cpsent]").count() == 0
+    assert "k=" not in pg.locator("#cpList").inner_html()
+    assert not ao_google and not erros, (ao_google, erros)
+    ctx.close()
+
+
+def test_lider_envia_print_com_o_token_do_especialista_escolhido(servidor_com_tokens, navegador):
+    ctx, pg, erros, ao_google = _entrar_com_tokens(navegador, servidor_com_tokens, "lider.tok@exemplo.com.br")
+    # comprovante: o token do líder da equipe da adesão
+    pg.click('#home [data-go="cp"]')
+    expect(pg.locator("#cpList a[data-cpsent]")).to_have_attribute("href", re.compile(r"\?tipo=comp&k=" + TOK_LUA + "&"))
+    # print de reativação: começa no próprio líder e troca pelo especialista escolhido
+    pg.click("#btnHome")
+    pg.click('#home [data-go="rt"]')
+    expect(pg.locator("#rtEspL")).to_be_visible()
+    expect(pg.locator("#rtEsp")).to_have_value("Lider Inventado")
+    mes = pg.input_value("#rtMes")
+    expect(pg.locator("#rtGas")).to_have_attribute("href", GAS_INVENTADO + "?k=" + TOK_LIDER + "&m=" + mes)
+    pg.select_option("#rtEsp", "Especialista Inventado")
+    expect(pg.locator("#rtGas")).to_have_attribute("href", GAS_INVENTADO + "?k=" + TOK_ESP + "&m=" + mes)
+    expect(pg.locator("#rtGasBox")).to_be_visible()
+    pg.select_option("#rtEsp", "Outro Especialista Inventado")  # sem token: o botão some
+    expect(pg.locator("#rtGasBox")).to_be_hidden()
+    assert pg.locator("#rtGas").get_attribute("href") is None
+    assert not ao_google and not erros, (ao_google, erros)
     ctx.close()
