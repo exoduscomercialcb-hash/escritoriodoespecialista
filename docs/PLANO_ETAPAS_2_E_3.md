@@ -61,6 +61,8 @@ Cole o texto abaixo na conversa do Claude que cuida do Escritório atual (a que 
 >   sem senhas.
 > - `comp_registro`: o conteúdo do `comp_registro.json` (registro dos comprovantes enviados), como está.
 > - `motivos` e `rtcfg`: os blocos da página, descriptografados se forem criptografados.
+> - `plt_cond`: a lista `PLT_COND` do `atualizar_retorno.py` (plantão por condição, ex.: Magnatas), como está.
+> - `creditos_fixados`: o conteúdo do `creditos_fixados.json` (aba CRÉDITOS FIXADOS), como está.
 > - `banco`: o conteúdo atual das coleções do banco da página, no formato `{coleção: {id do documento: dados}}`:
 >   `enviados`, `comp` (todos os documentos, inclusive `regras`), `compconf`, `reativ` e `cancenv`.
 > Confira no fim: quantos especialistas, quantas linhas no remarketing e quais meses em `evo.all.meses_base`.
