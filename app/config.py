@@ -94,6 +94,10 @@ class Config:
     sga_usuario: str = ""
     sga_senha: str = ""
     powercrm_token: str = ""
+    google_service_account_json: str = ""  # chave da conta de serviço (Drive e Planilhas, só leitura)
+    drive_pasta_comprovantes: str = ""  # ids do Drive e da planilha: ficam no Render, não no repositório (público)
+    drive_pasta_reativacao: str = ""
+    planilha_inside_sales: str = ""
     testar_na_partida: bool = False  # testa SGA e Power CRM quando o servidor liga (só no Render)
     busca_automatica: bool = False  # busca completa diária às 06:00 e às 16:00 (só no Render; BUSCA_AUTOMATICA=0 desliga)
     extras: dict = field(default_factory=dict)
@@ -150,6 +154,10 @@ def carregar(env: dict | None = None) -> Config:
         sga_usuario=env.get("SGA_USUARIO", "").strip(),
         sga_senha=env.get("SGA_SENHA", "").strip(),
         powercrm_token=env.get("POWERCRM_TOKEN", "").strip(),
+        google_service_account_json=env.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip(),
+        drive_pasta_comprovantes=env.get("DRIVE_PASTA_COMPROVANTES", "").strip(),
+        drive_pasta_reativacao=env.get("DRIVE_PASTA_REATIVACAO", "").strip(),
+        planilha_inside_sales=env.get("PLANILHA_INSIDE_SALES", "").strip(),
         testar_na_partida=em_producao,
         busca_automatica=em_producao and (env.get("BUSCA_AUTOMATICA") or "1").strip().lower() not in {
             "0", "nao", "não", "false", "off"},
