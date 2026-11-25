@@ -1,6 +1,9 @@
 /* Adaptador: a página dos cards (cards.js, vinda da página atual) usa window.claude.use('db' | 'user' | 'assets' |
    'downloads'), que existia na página publicada no Claude. Aqui, 'db' conversa com /api/banco do servidor
    (coleção + documento, mesmas operações); as mudanças de outras pessoas chegam a cada 20 segundos.
+   Como num banco em tempo real, o onSnapshot só chama a página de novo quando o conteúdo mudou (a busca de 20 em 20
+   segundos não redesenha a lista à toa, por exemplo com alguém digitando um valor pago) e nunca com uma resposta mais
+   velha do que a última entregue.
    'assets' (envio de prints) e 'downloads' ficam para a etapa 4: devolvem null e a página usa o caminho alternativo. */
 (() => {
   'use strict';
@@ -21,6 +24,22 @@
 
   function avisar(colecao) { assinaturas.forEach(a => { if (a.colecao === colecao) a.buscar(); }); }
 
+  // pede o caminho e só entrega à página se mudou desde a última entrega desta assinatura
+  function quandoMudar(caminho, entregar, falha) {
+    let ultimo = null, pedidos = 0, visto = 0;
+    return () => {
+      const n = ++pedidos;
+      return pedir('GET', caminho).then(r => {
+        if (n < visto) return;  // chegou depois de uma resposta mais nova (ex.: busca antiga x busca depois de gravar)
+        visto = n;
+        const texto = JSON.stringify(r);
+        if (texto === ultimo) return;
+        ultimo = texto;
+        entregar(r);
+      }, e => falha && falha(e));
+    };
+  }
+
   function assinar(colecao, buscar) {
     const a = { colecao, buscar };
     assinaturas.add(a);
@@ -38,7 +57,7 @@
       async update(dados) { await pedir('PATCH', caminho, dados); avisar(colecao); },
       async delete() { await pedir('DELETE', caminho, {}); avisar(colecao); },
       onSnapshot(ok, falha) {
-        return assinar(colecao, () => pedir('GET', caminho).then(r => ok(fotoDoc(id, r.data, r.exists)), e => falha && falha(e)));
+        return assinar(colecao, quandoMudar(caminho, r => ok(fotoDoc(id, r.data, r.exists)), falha));
       },
     };
   }
@@ -50,7 +69,7 @@
       async add(dados) { const r = await pedir('POST', encodeURIComponent(nome), dados); avisar(nome); return doc(nome, r.id); },
       async get() { return fotoColecao(await pedir('GET', encodeURIComponent(nome)), limite); },
       onSnapshot(ok, falha) {
-        return assinar(nome, () => pedir('GET', encodeURIComponent(nome)).then(r => ok(fotoColecao(r, limite)), e => falha && falha(e)));
+        return assinar(nome, quandoMudar(encodeURIComponent(nome), r => ok(fotoColecao(r, limite)), falha));
       },
     };
   }
