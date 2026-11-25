@@ -12,7 +12,9 @@ import hashlib
 import html as _html
 import json
 import re
+import threading
 import time
+import unicodedata as _ud  # ADAPTAÇÃO: o script importa no meio (rr_ok, 18/11); aqui fica no topo
 from concurrent.futures import ThreadPoolExecutor
 
 from app.dados import N  # a mesma N() do script ("Pé no Chão" -> "PE NO CHAO"); também monta as chaves dos pacotes
@@ -52,9 +54,17 @@ def rodar(entrada: Entrada) -> Saida:
     # recusa no login agora é SGABloqueado (parar e não insistir). Se o cliente desistir, levanta SGAErro (era SystemExit).
     # Depois de um SGABloqueado, as chamadas que ainda estavam na fila das linhas de execução levantam o mesmo erro sem
     # chamar o SGA de novo.
+    # ADAPTAÇÃO (18/11): ritmo() e bloqueado() do script já estão no cliente: `intervalo` espaça as chamadas (somando as
+    # linhas de execução; a busca usa 0,4 s, o script 0,35 s) e "BLOQUEADO" numa resposta de erro (ou no login) para na hora
+    # (SGABloqueado, conferido com um login novo). Não duplicar aqui. Só a contagem por consulta (NCALL) ficou, para o
+    # registro: conta as consultas do script (o script contava também cada nova tentativa; o total de verdade, com login e
+    # novas tentativas, é o `chamadas` do cliente, que app/busca/completa.py registra).
     BLOQ = []
+    NCALL = collections.Counter(); _NCL = threading.Lock()
     def _sga(metodo, *args):
         if BLOQ: raise SGABloqueado(BLOQ[0])
+        ep = str(args[0]) if args else ""
+        with _NCL: NCALL[ep.split("/")[2] if ep.count("/") >= 2 else ep] += 1
         try: return getattr(entrada.sga, metodo)(*args)
         except SGABloqueado as e_:
             BLOQ.append(str(e_)); raise
@@ -154,8 +164,11 @@ def rodar(entrada: Entrada) -> Saida:
         except Exception: return None
         j = j[0] if isinstance(j, list) and j else None
         return {k: j.get(k) for k in DKEEP} if j else None
+    FICHAS_MAX = [150]   # 18/11: no máximo 150 fichas novas por atualização (as fichas eram a maior causa dos bloqueios do SGA)
     def detalhes(cvs):
         falta = [cv for cv in dict.fromkeys(cvs) if str(cv) not in DET]
+        if len(falta) > FICHAS_MAX[0]: log("  fichas novas limitadas:", len(falta), "→", FICHAS_MAX[0], "(o resto entra nas próximas atualizações)"); falta = falta[:FICHAS_MAX[0]]
+        FICHAS_MAX[0] -= len(falta)
         if falta:
             with ThreadPoolExecutor(2) as ex:
                 for cv, x in zip(falta, ex.map(busca, falta)):
@@ -222,6 +235,7 @@ def rodar(entrada: Entrada) -> Saida:
         except ValueError: return None                 # datas vazias do SGA (0000-00-00)
     VC = OLD.get("vcache") if isinstance(OLD.get("vcache"), dict) else {}   # adesões já validadas (pago não volta atrás)
     VC = dict(VC)
+    VP = {k: v for k, v in (OLD.get("vpend") or {}).items() if isinstance(v, dict) and str(v.get("venc", "")) > HOJE.isoformat()}   # 18/11: 1º boleto ainda não vencido
     ultimo = {}
     for k in LIVE:
         for x in ATIV[k]:
@@ -238,6 +252,9 @@ def rodar(entrada: Entrada) -> Saida:
         cv = str(x["codigo_veiculo"]); c = dia(x.get("data_contrato")); pl = pl_(x.get("placa"))
         ck = cv + "|" + c.isoformat()
         if ck in VC: return dict(VC[ck], cache=True)
+        vp_ = VP.get(ck)
+        if vp_ and str(vp_.get("venc", "")) > HOJE.isoformat() and str(vp_.get("at", "")) >= (HOJE - dt.timedelta(days=3)).isoformat():
+            return dict({k_: v_ for k_, v_ in vp_.items() if k_ != "at"}, cache=True)   # ainda não venceu e foi conferido há pouco: não consulta o SGA
         if pl and ultimo.get(pl, "") > c.isoformat(): return {"ok": False, "mot": "nova adesão do mesmo veículo"}
         fim = c + dt.timedelta(days=150)          # o 1º boleto pode vencer depois de hoje (ex.: contrato do fim do mês passado)
         body = {"data_vencimento_inicial": c.strftime("%d/%m/%Y"), "data_vencimento_final": fim.strftime("%d/%m/%Y")}
@@ -286,6 +303,8 @@ def rodar(entrada: Entrada) -> Saida:
         for x in alvo:
             r_ = VALR[str(x["codigo_veiculo"])]
             if r_["ok"] and not r_.get("man"): VC[str(x["codigo_veiculo"]) + "|" + str(x.get("data_contrato"))[:10]] = {"ok": True, "pg": r_["pg"]}
+            elif not r_["ok"] and str(r_.get("venc", "")) > HOJE.isoformat() and not r_.get("cache"):
+                VP[str(x["codigo_veiculo"]) + "|" + str(x.get("data_contrato"))[:10]] = {k_: v_ for k_, v_ in r_.items() if k_ in ("ok", "mot", "sb", "venc")} | {"at": HOJE.isoformat()}
         log("  validação", vm, ":", sum(1 for x in alvo if VALR[str(x["codigo_veiculo"])]["ok"]), "de", len(alvo), "validadas |", dict(collections.Counter(VALR[str(x["codigo_veiculo"])].get("mot", "1º boleto pago") for x in alvo)))
 
     # ---------- séries de adesões / validadas: meses abertos do SGA, anteriores congelados ----------
@@ -312,6 +331,29 @@ def rodar(entrada: Entrada) -> Saida:
         s_.setdefault("ad", [0] * len(AM)); s_.setdefault("va", [0] * len(AM))
     # ---------- reativações (lista do financeiro × print do líder): somam nas adesões do líder no mês da lista ----------
     REAT = list(OLD.get("reat") or [])
+    # 14/11: a reativação é validada quando o boleto SEGUINTE (vencimento a partir do mês depois do mês da lista) é pago no SGA.
+    # Antes a lista só era copiada da atualização anterior e ficava parada em "Aguardando 2º boleto" mesmo com o boleto pago.
+    def reat_confere(r):
+        br_ = lambda s: "/".join(reversed(s.split("-"))) if s else ""
+        k = r.get("mes") or ""; pl = pl_(r.get("pl"))
+        if not pl or not re.match(r"\d{4}-\d{2}$", k): return
+        y_, m_ = map(int, k.split("-")); d0 = dt.date(y_ + (m_ == 12), m_ % 12 + 1, 1)
+        if d0 > HOJE: return
+        bs = boletos({"placa": pl, "data_vencimento_inicial": d0.strftime("%d/%m/%Y"), "data_vencimento_final": (d0 + dt.timedelta(days=150)).strftime("%d/%m/%Y")})
+        if bs is None: return                                  # SGA falhou: fica como estava
+        sit_ = lambda b: N(b.get("situacao_boleto") or b.get("descricao_situacao_boleto"))
+        vivos = sorted([((dia(b.get("data_vencimento_original")) or dia(b.get("data_vencimento"))), b) for b in bs if sit_(b) != "CANCELADO"], key=lambda t: (t[0] or HOJE))
+        pagos = [(v, b) for v, b in vivos if sit_(b) == "BAIXADO" and dia(b.get("data_pagamento"))]
+        if pagos:
+            v, b = pagos[0]; r.update(val=True, venc=br_(v.isoformat()) if v else "", sb="Pago em " + br_(dia(b.get("data_pagamento")).isoformat()))
+        elif vivos:
+            v, b = vivos[0]; r.update(venc=br_(v.isoformat()) if v else "", sb=("Vencido" if v and v < HOJE else "Em aberto"))
+    for r in REAT:
+        if not r.get("val") and r.get("mes") in LIVE:
+            try: reat_confere(r)
+            except SGABloqueado: raise   # ADAPTAÇÃO: no script o bloqueio era SystemExit, que o except abaixo não pegava (parava tudo)
+            except Exception as e_: log("  reativação não conferida:", type(e_).__name__)   # ADAPTAÇÃO: sem a placa no registro do Render
+    log("reativações conferidas no SGA:", sum(1 for r in REAT if r.get("mes") in LIVE), "| validadas:", sum(1 for r in REAT if r.get("val")))
     for r in REAT:
         k = r.get("mes")
         if k not in LIVE or k not in AM: continue            # meses congelados já carregam a soma
@@ -369,11 +411,38 @@ def rodar(entrada: Entrada) -> Saida:
         for kk in (pl_(x.get("placa")), pl_(x.get("chassi") or de.get("chassi")), "NOME:" + nm if nm else ""):
             if kk and (REGRAS.get(kk) or {}).get("plt"): return True
         return False
+    # Plantão por condição (Rafael, 14/11): quando a equipe tem "min" ativações ou mais no mês, o desconto destes associados
+    # conta como plantão (não entra na meta). Nome do associado no SGA ou no Power CRM; vale o começo do nome.
+    # ADAPTAÇÃO: no script a lista está escrita no código (hoje uma condição da equipe Magnatas, "min" 25, desde out/26, com
+    # dois nomes de associado). Nome de associado não entra no repositório: a lista vem de entrada.plt_cond (pacote
+    # "plt_cond" do banco), no mesmo formato: [{"t": "MAGNATAS", "min": 25, "desde": "2026-10", "nomes": ["<NOME>", ...]}].
+    PLT_COND = list(entrada.plt_cond or [])
+    def plt_cond(x, k, nome_extra=""):
+        t_ = COOP.get(str(x.get("codigo_cooperativa")), "")
+        de = DET.get(str(x.get("codigo_veiculo"))) or {}   # ADAPTAÇÃO: o Kit lia DET por globals(); aqui DET é variável desta função
+        nomes = {N(x.get("nome") or x.get("nome_associado") or de.get("nome") or de.get("nome_associado")), N(nome_extra)}
+        for c in PLT_COND:
+            if t_ != c["t"] or k < c.get("desde", ""): continue
+            if sum(1 for y in ATIV.get(k, []) if COOP.get(str(y.get("codigo_cooperativa")), "") == t_) < c["min"]: continue
+            if any(n and any(n.startswith(p) for p in c["nomes"]) for n in nomes): return True
+        return False
     DESDE = "2026-09"
     DESC = OLD.get("desc") or {"d": {}, "tk": {}}
     QM = {}
     try: LDC = [x["ld"] for x in ESPS if (x.get("ld") or {}).get("pc")]   # ADAPTAÇÃO: spec_keys.json -> entrada.especialistas
     except Exception: LDC = []
+    # 19/11 (Rafael): aba "CRÉDITOS FIXADOS" da planilha Ativação Inside Sales = venda fechada pela vendedora interna e transferida a
+    # outro especialista a pedido da diretoria. Fica com o especialista de destino E é duplicada para a vendedora interna (adesões,
+    # validadas, comprovantes, gráficos).
+    def _fixc():
+        # ADAPTAÇÃO: creditos_fixados.json do Kit -> entrada.creditos_fixados (pacote "creditos_fixados" do banco; [] = arquivo ausente)
+        try: L_ = list(entrada.creditos_fixados or [])
+        except Exception: return {}
+        d_ = {}
+        for f_ in L_:
+            for key_ in (["cv:" + str(f_["cv"])] if f_.get("cv") else []) + (["pl:" + pl_(f_["placa"])] if f_.get("placa") else []) + (["n:" + N(f_["nome"])] if f_.get("nome") else []): d_[key_] = f_
+        return d_
+    FIXC = _fixc()
     VI_CART = {N(x["cart"]) for x in LDC}          # voluntário da carteira das vendedoras internas (Power CRM diz quem fechou)
     VIMAP = dict(OLD.get("vimap") or {})            # veículo da carteira -> vendedor no Power CRM ("" = sem cotação)
     ATVD_CV = {str(x["codigo_veiculo"]) for x in ATV}
@@ -400,6 +469,8 @@ def rodar(entrada: Entrada) -> Saida:
                 pg += 1
             d0 = d1 + dt.timedelta(days=1)
         log("  Power CRM:", len(COT), "cotações")
+        # 16/11: o Power CRM respondeu erro 500 e a atualização saiu com 0 cotações (descontos e cotações zerados). Sem cotação, nada é publicado.
+        if len(COT) < 100: raise ErroBusca("Power CRM não respondeu (só %d cotações) — nada foi publicado; tente mais tarde" % len(COT))   # ADAPTAÇÃO: era SystemExit
         def dbr(s):
             m_ = re.match(r"(\d{2})/(\d{2})/(\d{4})", str(s or "")); return dt.date(int(m_[3]), int(m_[2]), int(m_[1])) if m_ else None
         def brl(s):
@@ -449,7 +520,7 @@ def rodar(entrada: Entrada) -> Saida:
                 q = cotacao(x)
                 if not q: sem += 1; continue
                 cota, dv = desconto(q)
-                if dv > 0: v_[1 if plantao(dia(x.get("data_contrato"))) or plt_(x) else 2] += 1
+                if dv > 0: v_[1 if plantao(dia(x.get("data_contrato"))) or plt_(x) or plt_cond(x, k, q.get("clientName")) else 2] += 1
                 if cota > 0: z = tk.setdefault(t_, [0.0, 0]); z[0] = round(z[0] + cota - dv, 2); z[1] += 1
             DESC["d"][k] = dd; DESC["tk"][k] = tk
             log("  descontos", k, ":", sum(v[0] for v in dd.values()), "ativações,", sum(v[1] + v[2] for v in dd.values()), "com desconto")
@@ -475,6 +546,7 @@ def rodar(entrada: Entrada) -> Saida:
                 VIMAP[cv] = N(q.get("responsibleSalesman")) if q else ""
             VIMAP = {k_: v_ for k_, v_ in VIMAP.items() if k_ in ATVD_CV}
             log("  carteira das vendedoras internas:", collections.Counter(VIMAP.values()).most_common(6))
+    except ErroBusca: raise   # ADAPTAÇÃO: a parada de 16/11 (menos de 100 cotações) era SystemExit, que este except não pegava
     except Exception as e_:
         log("AVISO: descontos não recalculados (mantidos os anteriores):", type(e_).__name__, e_)
         COT = None   # ADAPTAÇÃO: cotações pela metade não servem para a regra do liderado (ela usa as adesões já movidas antes)
@@ -496,6 +568,7 @@ def rodar(entrada: Entrada) -> Saida:
     INST_ANT = {(a.get("m"), pl_(a.get("pl")) or a.get("ch")): (a["inst"], a.get("instd"), a.get("instst"))
                 for a in (OLD.get("ades") or []) if isinstance(a, dict) and a.get("inst")}
     CMS = [k for k in LIVE if k >= COMP_DESDE]
+    STA = {}   # ADAPTAÇÃO: definido também fora do if, para a retirada (abaixo) reaproveitar a lista já lida
     if CMS:
         d0 = dt.date.fromisoformat(CMS[0] + "-01") - dt.timedelta(days=45)
         STA = {}
@@ -549,8 +622,10 @@ def rodar(entrada: Entrada) -> Saida:
             ADES.append({"m": k, "n": tc2(q.get("n") or de.get("nome") or de.get("nome_associado")), "tel": fone(q.get("tel")) or fone(str(de.get("ddd_celular") or "") + str(de.get("telefone_celular") or "")),
                          "esp": tc2(x.get("nome_voluntario")), "t": COOP.get(str(x.get("codigo_cooperativa")), ""), "pl": x.get("placa") or "", "dc": br_(str(x.get("data_contrato"))[:10]),
                          "ok": bool(r_ and r_.get("ok")), "bol": bol, "venc": venc, "ss": tc2(x.get("descricao_situacao")),
-                         "cota": q.get("cota"), "dv": dv, "pt": ("P" if (c_ and any(a <= c_.isoformat() <= b for a, b in PLANTAO.get(k, []))) or plt_(x) else "F") if dv else "", "cot": bool(q)})
+                         "cota": q.get("cota"), "dv": dv, "pt": ("P" if (c_ and any(a <= c_.isoformat() <= b for a, b in PLANTAO.get(k, []))) or plt_(x) or plt_cond(x, k, q.get("n")) else "F") if dv else "", "cot": bool(q)})
             if VI_CART and N(x.get("nome_voluntario")) in VI_CART and q.get("vs"): ADES[-1]["vs"] = q["vs"]
+            fx_ = FIXC.get("cv:" + cv) or FIXC.get("pl:" + pl_(x.get("placa") or "")) or FIXC.get("n:" + N(ADES[-1]["n"]))
+            if fx_: ADES[-1]["vf"] = fx_["resp"]; ADES[-1]["vfm"] = fx_.get("comp") or k   # 19/11: crédito fixado (aba CRÉDITOS FIXADOS) também conta para a vendedora interna
             if k >= COMP_DESDE:
                 a_ = ADES[-1]; plx = pl_(x.get("placa")); chx = pl_(x.get("chassi") or de.get("chassi"))
                 if not plx and chx: a_["ch"] = chx
@@ -578,11 +653,28 @@ def rodar(entrada: Entrada) -> Saida:
     RESG_DESDE = "2026-10-01"                                                  # remarketing realizado: conta a partir de out/26
     def _reat(cv): return max((h[0][:10] for h in HIST.get(cv, []) if str(h[1]) == "6" and str(h[2]) in ACT_S), default="")
     cd = {cv: dc for cv, dc in cd.items() if HIST[cv][-1][2] == "6" or (str(HIST[cv][-1][2]) in ACT_S and _reat(cv) >= max(RESG_DESDE, dc))}   # continua cancelado, ou foi reativado (resgate) a partir de out/26
+    # inadimplentes e inativos (Rafael, 16/11): passaram para a situação no mês anterior ou no atual e continuam nela hoje.
+    # Aparecem junto com os cancelados (inadimplente = cinza-escuro, inativo = cinza-claro), sem promoção e sem aviso por e-mail.
+    # Se voltou a ficar ativo depois (16/11), continua na lista em verde-escuro, como o cancelado reativado (campo rs).
+    SIT_X = {"4": "inad", "2": "inat", "10": "ret"}   # 18/11: retirada também entra (com a situação do rastreador)
+    SIT_NM = {"1": "Ativo", "18": "Ativo - Pendente Instalação", "16": "Aguardando Instalação", "19": "Ativo - Dispensa Instalação"}
+    CX_ = {}
+    for cv, hs in HIST.items():
+        if cv in cd: continue
+        ul_ = str(hs[-1][2])
+        ix_ = [i for i, h in enumerate(hs) if str(h[2]) in SIT_X and h[0][:10] >= ini.isoformat()]
+        if not ix_: continue
+        i_ = ix_[-1]; d_ = hs[i_][0][:10]; s_ = SIT_X[str(hs[i_][2])]
+        if ul_ in SIT_X: CX_[cv] = (d_, s_, None)                                   # continua inadimplente/inativo
+        elif ul_ in ACT_S:                                                         # voltou a ficar ativo depois
+            v_ = next((h for h in hs[i_ + 1:] if str(h[2]) in ACT_S), None)
+            if v_ and v_[0][:10] >= (HOJE - dt.timedelta(days=7)).isoformat():   # 18/11: só quem voltou nos últimos 7 dias (eram 429 cards e centenas de fichas no SGA)
+                CX_[cv] = (d_, s_, {"dc": v_[0][:10], "tp": "reativado", "sit": SIT_NM.get(ul_, "Ativo")})
     ACT = {"1", "18", "16", "19"}; GEN = {"removido", "desconsiderado", "desvinculado", "", "operação realizada através da apiv2"}
     def cap(s): s = s.strip().lower(); return s[:1].upper() + s[1:]
     def limpa(o): return " ".join(_html.unescape(re.sub(r"<[^>]+>", " ", (o or "").replace('\\"', '"'))).replace("\xa0", " ").split())[:160]
-    def motivo(cv):
-        hs = HIST.get(cv, []); ci = max([i for i, h in enumerate(hs) if h[2] == "6"], default=None)
+    def motivo(cv, alvo="6"):
+        hs = HIST.get(cv, []); ci = max([i for i, h in enumerate(hs) if str(h[2]) == alvo], default=None)
         if ci is None: return "", ""
         m_ = o_ = ""
         for h in reversed(hs[:ci + 1]):
@@ -597,21 +689,58 @@ def rodar(entrada: Entrada) -> Saida:
                     if h[4].strip().lower() not in GEN and not h[4].upper().startswith("TASK"): o_ = h[4]; break
         o_ = "" if o_.strip().lower() in GEN or o_.upper().startswith("TASK") else limpa(o_)
         return (cap(m_) if m_ else ""), o_
-    try: detalhes([] if TARDIO else list(cd))     # ADAPTAÇÃO: depois de um bloqueio no trecho final, só o cache (DET)
+    # 19/11: com o limite de fichas, primeiro quem continua em retirada/inadimplente/inativo (mais recentes antes); quem voltou a ficar ativo fica por último
+    try: detalhes([] if TARDIO else list(cd) + sorted(CX_, key=lambda cv: (CX_[cv][2] is not None, {"ret": 0, "inad": 1, "inat": 2}[CX_[cv][1]], [-ord(c) for c in CX_[cv][0]])))     # ADAPTAÇÃO: depois de um bloqueio no trecho final, só o cache (DET)
     except SGABloqueado as e_: TARDIO.append(str(e_))
+    # ---------- retirada (18/11): rastreador desvinculado? atendimento REMOÇÃO DE RASTREADOR (100014) do SGA, o mais recente do veículo ----------
+    # Desvinculado/removido = verde (já pode fazer nova adesão); qualquer outro status ou sem atendimento = vermelho (ainda vinculado).
+    # 19/11 (Rafael): pode fazer nova adesão quando o atendimento de REMOÇÃO DE RASTREADOR está Desvinculado, Removido ou Desconsiderado
+    # (inclui variações: Desvinculado pago/negativado, Removido com boleto, Concluído removido, Concluído desconsiderado). Qualquer outro status = ainda vinculado.
+    def rr_ok(desc):
+        w = set(_ud.normalize("NFKD", str(desc or "")).encode("ascii", "ignore").decode().upper().replace("-", " ").split())
+        return bool(w & {"DESVINCULADO", "REMOVIDO", "DESCONSIDERADO"})
+    REM = {}
+    # ADAPTAÇÃO: este trecho também é opcional no script (erro só vai para o registro). Bloqueio aqui ou antes, no trecho final:
+    # não chama o SGA (TARDIO) e a retirada fica com a situação do rastreador da busca anterior (RR_ANT, abaixo).
+    if any(v_[1] == "ret" for v_ in CX_.values()) and not TARDIO:
+        try:
+            # ADAPTAÇÃO: reaproveita a lista de status já lida nas instalações (a mesma consulta); só consulta se ela não veio
+            STA2 = STA or {x["codigo_statusatendimentoassociado"]: x["descricao"] for x in _sga("get", "/listar/status-atendimento/todos")}
+            d0r = (HOJE.replace(day=1) - dt.timedelta(days=200)).replace(day=1); pg = 0
+            while True:
+                it = post("/listar/historico-atendimento-associado", {"codigo_tipo_atendimento": "100014", "data_cadastro_inicial": d0r.strftime("%d/%m/%Y"), "data_cadastro_final": HOJE.strftime("%d/%m/%Y"), "quantidade_por_pagina": 5000, "inicio_paginacao": pg})
+                it = it if isinstance(it, list) else []
+                for a in it:
+                    k_ = str(a.get("codigo_veiculo")); q_ = (a.get("data_cadastro") or "") + " " + (a.get("hora_cadastro") or "")
+                    if k_ not in REM or q_ > REM[k_][0]:
+                        stc = str(a.get("codigo_status_atendimento"))
+                        REM[k_] = (q_, {"ok": rr_ok(STA2.get(stc, stc)), "st": " ".join(w.capitalize() for w in str(STA2.get(stc, stc)).lower().split()), "d": "/".join(reversed((a.get("data_cadastro") or "")[:10].split("-")))})
+                if len(it) < 5000: break
+                pg += 1
+            log("  remoção de rastreador (atendimentos do SGA):", len(REM), "veículos")
+        except SGABloqueado as e_: TARDIO.append(str(e_))   # ADAPTAÇÃO: ver acima
+        except (Exception, SystemExit) as e_: log("  atendimentos de remoção de rastreador não lidos:", str(e_)[:80])
+    # ADAPTAÇÃO: com bloqueio no trecho final, a situação do rastreador vem da busca anterior (como as instalações, INST_ANT)
+    RR_ANT = {(c_.get("mat"), c_.get("pl")): c_["rr"] for c_ in (OLD.get("canc") or []) if isinstance(c_, dict) and c_.get("rr")} if TARDIO else {}
     def tc(x): return " ".join(w if w.lower() in ("de", "da", "do", "dos", "das", "e") else w.capitalize() for w in str(x or "").lower().split())
     CANC = []
-    for cv, dc in cd.items():
+    for cv, dc, st_ in [(cv, dc, "") for cv, dc in cd.items()] + [(cv, d_, s_) for cv, (d_, s_, _) in CX_.items()]:
         x = DET.get(str(cv))
         if not x: continue
         dig = "".join(c for c in (x.get("ddd_celular") or "") + (x.get("telefone_celular") or "") if c.isdigit())
         en = N(x.get("nome_voluntario")) or "SEM ESPECIALISTA"
-        m_, o_ = motivo(cv)
+        m_, o_ = motivo(cv, {"inad": "4", "inat": "2", "ret": "10"}.get(st_, "6"))
         CANC.append({"n": tc(x.get("nome") or x.get("nome_associado")), "pl": x.get("placa") or "", "mod": (x.get("modelo") or "").strip(), "ano": str(x.get("ano_modelo") or ""),
                      "moto": "MOTO" in N(x.get("tipo")) or "MOTO" in N(x.get("categoria")), "cel": "", "wa": ("55" + dig) if len(dig) in (10, 11) else "",
                      "mat": str(x.get("codigo_associado")), "esp": tc(x.get("nome_voluntario")), "en": en, "t": COOP.get(str(x.get("codigo_cooperativa")), ""),
                      "lt": LNAMES.get(en, ""), "dc": dc, "mp": None, "b": None, "mot": m_ or "Sem motivo registrado", "obs": o_, "_cpf": x.get("cpf") or ""})
-    log("cancelados recentes:", len(CANC), "de", len(cd), "que passaram para cancelado")
+        if st_:
+            CANC[-1]["st"] = st_
+            if st_ == "ret":
+                CANC[-1]["rr"] = REM.get(str(cv), ("", {"ok": False, "st": "", "d": ""}))[1]
+                if str(cv) not in REM and (CANC[-1]["mat"], CANC[-1]["pl"]) in RR_ANT: CANC[-1]["rr"] = RR_ANT[(CANC[-1]["mat"], CANC[-1]["pl"])]   # ADAPTAÇÃO: ver RR_ANT
+            if CX_[cv][2]: CANC[-1]["rs"] = dict(CX_[cv][2], pl=CANC[-1]["pl"])
+    log("cancelados recentes:", sum(1 for c_ in CANC if not c_.get("st")), "de", len(cd), "que passaram para cancelado | inadimplentes:", sum(1 for c_ in CANC if c_.get("st") == "inad" and not c_.get("rs")), "| inativos:", sum(1 for c_ in CANC if c_.get("st") == "inat" and not c_.get("rs")), "| retirada:", sum(1 for c_ in CANC if c_.get("st") == "ret" and not c_.get("rs")), "(rastreador desvinculado:", sum(1 for c_ in CANC if c_.get("st") == "ret" and not c_.get("rs") and (c_.get("rr") or {}).get("ok")), ") | voltaram a ficar ativos:", sum(1 for c_ in CANC if c_.get("st") and c_.get("rs")))
     # outros veículos do mesmo associado que continuam ativos na base (para o aviso por e-mail)
     VASSOC = collections.defaultdict(list)
     for v_ in ATV:
@@ -627,17 +756,18 @@ def rodar(entrada: Entrada) -> Saida:
     RSV = collections.defaultdict(list)
     for v_ in ATV:
         dc_ = str(v_.get("data_contrato") or "")[:10]; ra_ = _reat(v_["codigo_veiculo"])
-        if dc_ >= RESG_DESDE: e_ = {"dc": dc_, "tp": "novo"}
-        elif ra_ >= RESG_DESDE: e_ = {"dc": ra_, "tp": "reativado"}
-        else: continue
-        e_.update(pl=(v_.get("placa") or v_.get("chassi") or "").strip(), sit=tc(v_.get("descricao_situacao")))
-        if v_.get("codigo_associado"): RSV["m:" + str(v_["codigo_associado"])].append(e_)
-        if len(_dg(v_.get("cpf_associado"))) >= 11: RSV["c:" + _dg(v_.get("cpf_associado"))].append(e_)
+        # contrato e reativação contam os dois (bug 16/11: um veículo com contrato de 30/10, cancelado em 03/11 e reativado depois
+        # continuava "cancelado", porque com contrato a partir de out/26 a reativação era ignorada)
+        for e_ in ([{"dc": dc_, "tp": "novo"}] if dc_ >= RESG_DESDE else []) + ([{"dc": ra_, "tp": "reativado"}] if ra_ >= RESG_DESDE and ra_ > dc_ else []):
+            e_.update(pl=(v_.get("placa") or v_.get("chassi") or "").strip(), sit=tc(v_.get("descricao_situacao")))
+            if v_.get("codigo_associado"): RSV["m:" + str(v_["codigo_associado"])].append(e_)
+            if len(_dg(v_.get("cpf_associado"))) >= 11: RSV["c:" + _dg(v_.get("cpf_associado"))].append(e_)
     def resg_de(mat, cpf="", desde=""):
         for e_ in sorted(RSV.get("m:" + str(mat), []) + (RSV.get("c:" + _dg(cpf), []) if len(_dg(cpf)) >= 11 else []), key=lambda e: e["dc"]):
             if e_["dc"] >= desde: return dict(e_)
         return None
     for c_ in CANC:
+        if c_.get("st"): c_.pop("_cpf", ""); continue                     # inadimplente/inativo: não é resgate
         r_ = resg_de(c_["mat"], c_.pop("_cpf", ""), c_["dc"])
         if r_: c_["rs"] = r_
     LRS = {}                                                  # lista do remarketing (no cofre da página): matrícula -> resgate
@@ -704,7 +834,7 @@ def rodar(entrada: Entrada) -> Saida:
             par = tuple(str(i) for i in ld.get("par") or [])
             if not par or par in feitos: continue
             feitos.add(par); T = ld["team"]; DV = {N(x) for x in ld.get("div") or []}
-            pool = [c_ for c_ in CANC if N(c_.get("t")) == N(T) and c_["en"] in DV]
+            pool = [c_ for c_ in CANC if N(c_.get("t")) == N(T) and c_["en"] in DV and not c_.get("st")]   # inadimplente/inativo fora do sorteio
             cnt = collections.Counter(DIVEX.get(ckey(c_)) for c_ in pool if DIVEX.get(ckey(c_)) in par)
             for c_ in sorted(pool, key=lambda c_: (c_.get("dc") or "", ckey(c_))):
                 if DIVEX.get(ckey(c_)) not in par:
@@ -738,7 +868,8 @@ def rodar(entrada: Entrada) -> Saida:
     def vend_interna(obj, sk, base_now=None):
         ld = sk["ld"]; PCN = {N(x) for x in ld.get("pc") or []}; sid = str(sk["id"]); VT = "VI"
         nomes_ = PCN | {N(sk["nome"])}
-        mine = [dict(a_, t=VT) for a_ in ADES if a_.get("vs") in PCN]
+        fxn = lambda a_: a_.get("vf") and not (a_.get("vs") in PCN) and (N(a_["vf"]) in PCN or N(a_["vf"]) == N(sk["nome"]).split()[0] or N(a_["vf"]) == N(sk["nome"]))
+        mine = [dict(a_, t=VT) for a_ in ADES if a_.get("vs") in PCN] + [dict(a_, t=VT, m=a_.get("vfm") or a_["m"], fx=True) for a_ in ADES if fxn(a_)]   # + créditos fixados (19/11)
         h_ = VIH.setdefault(sid, {"ad": {}, "va": {}, "base": {}})
         for k_ in LIVE:
             rt_ = [r_ for r_ in REAT if r_.get("mes") == k_ and N(r_.get("esp_n") or r_.get("esp")) in nomes_]   # reativações contam como nos líderes
@@ -765,7 +896,8 @@ def rodar(entrada: Entrada) -> Saida:
                 tk_[k_] = {VT: [round(sum(a_["cota"] - (a_.get("dv") or 0) for a_ in c_), 2), len(c_)]} if c_ else {}
             ds_ = dict(DESC, d=dd_, tk=tk_)
             DESCVI[sid] = {"d": {k_: v_ for k_, v_ in dd_.items()}, "tk": tk_}
-        VILID[N(sk["nome"])] = {"base": [x or 0 for x in bs_], "ad": ad_, "va": va_}
+        fxa = [sum(1 for a_ in mine if a_.get("fx") and a_["m"] == k_) for k_ in AM]; fxv = [sum(1 for a_ in mine if a_.get("fx") and a_["m"] == k_ and a_.get("ok")) for k_ in AM]
+        VILID[N(sk["nome"])] = {"base": [x or 0 for x in bs_], "ad": ad_, "va": va_, "fx": {"ad": fxa, "va": fxv}}
         nm_ = dict(obj.get("nomes") or {}); nm_[VT] = sk["nome"]
         obj.update(vi={"meta": ld.get("meta", 15), "nome": sk["nome"], "t": VT}, ades=mine, series=ser, pend=pr_, desc=ds_, nomes=nm_,
                    vesp={VT: {N(sk["nome"]): {"ad": ad_, "va": va_}}}, lidb={})
@@ -801,13 +933,15 @@ def rodar(entrada: Entrada) -> Saida:
             ld = x.get("ld") or {}
             if not ld.get("pc"): continue
             T = ld["team"]; CART = N(ld["cart"]); PC = {N(p) for p in ld["pc"]}; nm = x["nome"]; key = N(nm)
+            o.setdefault("vib", []).append({"nome": nm, "key": key, "first": N(nm).split()[0], "t": T, "meta": ld.get("meta") or 15})   # 20/11: bônus nominal do Inside Sales na coordenação
             o["ades"] = [dict(a_, esp=nm, vesp_cart=a_.get("esp")) if a_.get("vs") in PC and N(a_.get("esp")) == CART else a_ for a_ in o.get("ades") or []]
             z = (o.get("series") or {}).get(T + "|lid:" + key)
             ve = (o.get("vesp") or {}).get(T)
             if z and ve is not None:
                 ve[key] = {"ad": list(z.get("ad") or []), "va": list(z.get("va") or [])}
                 c_ = ve.get(CART)
-                if c_: ve[CART] = dict({f: [max(0, a - b) for a, b in zip(c_.get(f) or [], z.get(f) or [0] * len(c_.get(f) or []))] for f in ("ad", "va")}, **{f: c_[f] for f in ("rt", "rv") if f in c_})
+                fx_ = (VILID.get(key) or {}).get("fx") or {}   # crédito fixado não saiu da carteira: não desconta dela
+                if c_: ve[CART] = dict({f: [max(0, a - b + d) for a, b, d in zip(c_.get(f) or [], z.get(f) or [0] * len(c_.get(f) or []), (fx_.get(f) or []) + [0] * 99)] for f in ("ad", "va")}, **{f: c_[f] for f in ("rt", "rv") if f in c_})
         return o
     out = {}   # ADAPTAÇÃO: chaves "all", "t:<EQUIPE>" e "e:<NOME>" (com N), no lugar de out["all"], out["t"][id] e out["e"][id]
     for team, (_, nome, u) in LEAD.items():
@@ -824,7 +958,7 @@ def rodar(entrada: Entrada) -> Saida:
     CARTT = {ld["team"] for ld in LDALL}             # equipes sem líder com carteira dividida: avisos vão para as vendedoras (campo vi)
     def _dest(c_): return ({c_.get("t"), c_.get("lt")} - {"", None}) & (set(LEAD) | (CARTT if c_.get("vi") else set()))
     def _nov(t_): return NOVOS.setdefault(t_, {"lider": LEAD[t_][1], "lider_sga": LEAD[t_][0], "rows": []} if t_ in LEAD else {"lider": "", "lider_sga": "", "rows": []})
-    ELEG = [c_ for c_ in CANC if not c_.get("rs") and c_.get("mp") is not None and c_["mp"] >= 0.7 and c_.get("b") is not None and c_["b"] >= 3]
+    ELEG = [c_ for c_ in CANC if not c_.get("rs") and not c_.get("st") and c_.get("mp") is not None and c_["mp"] >= 0.7 and c_.get("b") is not None and c_["b"] >= 3]
     VISTOS0 = OLD.get("notif_vistos")
     NOVOS = {}
     if VISTOS0 is not None:                                   # na 1ª vez só marca o que já existe (sem e-mail)
@@ -834,7 +968,7 @@ def rodar(entrada: Entrada) -> Saida:
             for t_ in _dest(c_): _nov(t_)["rows"].append(c_)
     NOTIF_VISTOS = sorted({ckey(c_) for c_ in ELEG} | (set(VISTOS0 or []) & {ckey(c_) for c_ in CANC}))
     # perfil bom (margem >= 70%) mas menos de 3 boletos: "negociar com o coordenador" (avisado a partir de 20/10/26)
-    COORDL = [c_ for c_ in CANC if not c_.get("rs") and c_.get("mp") is not None and c_["mp"] >= 0.7 and c_.get("b") is not None and c_["b"] < 3]
+    COORDL = [c_ for c_ in CANC if not c_.get("rs") and not c_.get("st") and c_.get("mp") is not None and c_["mp"] >= 0.7 and c_.get("b") is not None and c_["b"] < 3]
     VISTOSC0 = OLD.get("notif_vistos_coord")
     vc_ = set(VISTOSC0) if VISTOSC0 is not None else {ckey(c_) for c_ in COORDL if (c_.get("dc") or "") < "2026-10-20"}   # 1ª vez: só os cancelados a partir de 20/10/26
     if VISTOS0 is not None:
@@ -886,8 +1020,14 @@ def rodar(entrada: Entrada) -> Saida:
         log("acessos de especialista:", nesp)
     assert isinstance(VC, dict) and all(isinstance(v_, dict) for v_ in VC.values()), "vcache corrompido (bug 03/11)"
     out["all"] = enc(None, vi_all(cart_all(dict(META, notif_vistos=NOTIF_VISTOS, notif_vistos_coord=NOTIF_VISTOS_C, div_ex=DIVEX, vi_hist=VIH, desc_vi=DESCVI, vimap=VIMAP, nomes=NOMES, leaders={t: n for t, (_, n, _) in LEAD.items()}, teams=sorted(NOMES, key=lambda t: NOMES[t]), series=SERIES, canc=CANC, vesp=VESP, lidb=LIDB, pend=PEND, desc=DESC, reat=REAT, ades=ADES,
-                                  det={k: v for k, v in DET.items() if k in {str(c) for c in cd} or k in {str(x["codigo_veiculo"]) for k_ in LIVE for x in ATIV[k_]}}, vcache=VC), lambda n_: (TEAMOF[n_].most_common(1) or [("", 0)])[0][0], LDALL), LDALL))
+                                  det={k: v for k, v in DET.items() if k in {str(c) for c in cd} or k in {str(c) for c in CX_} or k in {str(x["codigo_veiculo"]) for k_ in LIVE for x in ATIV[k_]}}, vcache=VC, vpend=VP), lambda n_: (TEAMOF[n_].most_common(1) or [("", 0)])[0][0], LDALL), LDALL))
+    log("chamadas ao SGA nesta atualização:", sum(NCALL.values()), dict(NCALL.most_common()))
     # ADAPTAÇÃO: em vez de gravar a página e imprimir o resumo, devolve os pacotes e o resumo
     return Saida(pacotes=out, novos_cancelados=NOVOS_SAIDA, cotacoes=list(COT.values()) if COT else None,
-                 resumo={"atualizado": META["atualizado"], "base_hoje": len(ATV), "cancelados_recentes": len(CANC), "bi": BI_OK,
+                 resumo={"chamadas_sga": sum(NCALL.values()), "atualizado": META["atualizado"], "base_hoje": len(ATV),
+                         "cancelados_recentes": sum(1 for c_ in CANC if not c_.get("st")),
+                         "inadimplentes": sum(1 for c_ in CANC if c_.get("st") == "inad" and not c_.get("rs")),
+                         "inativos": sum(1 for c_ in CANC if c_.get("st") == "inat" and not c_.get("rs")),
+                         "retirada": sum(1 for c_ in CANC if c_.get("st") == "ret" and not c_.get("rs")),
+                         "voltaram_ativos": sum(1 for c_ in CANC if c_.get("st") and c_.get("rs")), "bi": BI_OK,
                          "sga_bloqueado_no_fim": TARDIO[0] if TARDIO else None})
