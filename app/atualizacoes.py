@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import FUSO, Config
 from .db import Atualizacao, Trava
+from .fontes.google import ClienteGoogle, GoogleErro
 from .fontes.powercrm import ClientePowerCRM, PowerCRMErro
 from .fontes.sga import ClienteSGA, SGABloqueado, SGAErro
 from .tempo import agora, formatar, iso, utc
@@ -119,6 +120,44 @@ def testar_powercrm(db: Session, cfg: Config, http=None) -> dict:
     finally:
         if http is None:
             cliente.fechar()
+
+
+ABA_CREDITOS = "CRÉDITOS FIXADOS"
+
+
+def testar_drive(db: Session, cfg: Config, http=None) -> dict:
+    """Login da conta de serviço, as duas pastas e a planilha do Inside Sales (só leitura, poucas chamadas)."""
+    if not cfg.google_service_account_json:
+        return {"ok": False, "mensagem": "A chave do Google (GOOGLE_SERVICE_ACCOUNT_JSON) não está no Render."}
+    a = iniciar(db, "drive", "teste")
+    try:
+        cliente = ClienteGoogle(cfg.google_service_account_json, http=http)
+    except GoogleErro as e:
+        return concluir(db, a, False, f"Google: {e}.")
+    partes, faltam = [], []
+    try:
+        cliente.token()
+        for nome, pasta_id in (("comprovantes", cfg.drive_pasta_comprovantes), ("prints", cfg.drive_pasta_reativacao)):
+            if not pasta_id:
+                faltam.append(f"o id da pasta dos {nome} (DRIVE_PASTA_{'COMPROVANTES' if nome == 'comprovantes' else 'REATIVACAO'})")
+                continue
+            partes.append(f"pasta dos {nome} \"{cliente.pasta(pasta_id).get('name', '?')}\"")
+        if cfg.planilha_inside_sales:
+            abas = [s["properties"]["title"] for s in cliente.planilha(cfg.planilha_inside_sales).get("sheets") or []]
+            if ABA_CREDITOS not in abas:
+                return concluir(db, a, False, f"Google: a planilha abriu, mas não tem a aba {ABA_CREDITOS}.")
+            partes.append(f"planilha com a aba {ABA_CREDITOS}")
+        else:
+            faltam.append("o id da planilha do Inside Sales (PLANILHA_INSIDE_SALES)")
+    except GoogleErro as e:
+        return concluir(db, a, False, f"Google: {e}.")
+    finally:
+        if http is None:
+            cliente.fechar()
+    texto = f"Conectou no Google como {cliente.email}" + (": " + ", ".join(partes) if partes else "") + "."
+    if faltam:
+        return concluir(db, a, False, texto + " Falta no Render " + " e ".join(faltam) + ".")
+    return concluir(db, a, True, texto)
 
 
 def teste_devido(db: Session, fonte: str) -> bool:

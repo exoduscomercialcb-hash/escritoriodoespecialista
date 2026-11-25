@@ -348,7 +348,7 @@
     const b = $('atuTestar'); b.disabled = true; $('atuResultado').replaceChildren(h('p', { class: 'hint' }, 'Testando…'));
     try {
       const r = await api('/api/admin/atualizacoes/testar', { corpo: {} });
-      $('atuResultado').replaceChildren(...[['SGA', r.sga], ['Power CRM', r.powercrm]].map(([n, x]) => h('p', { class: x.ok ? 'ok-msg' : 'err' }, n + ': ' + x.mensagem)));
+      $('atuResultado').replaceChildren(...[['SGA', r.sga], ['Power CRM', r.powercrm], ['Google Drive', r.drive]].map(([n, x]) => h('p', { class: x.ok ? 'ok-msg' : 'err' }, n + ': ' + x.mensagem)));
       carregarAtualizacoes();
     } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
     b.disabled = false;

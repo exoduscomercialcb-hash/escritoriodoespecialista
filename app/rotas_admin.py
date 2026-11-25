@@ -7,7 +7,7 @@ from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from .atualizacoes import painel as painel_de_atualizacoes
-from .atualizacoes import retirar_pausa_do_sga, testar_powercrm, testar_sga
+from .atualizacoes import retirar_pausa_do_sga, testar_drive, testar_powercrm, testar_sga
 from .busca.completa import motivo_para_nao_rodar, rodar_em_segundo_plano
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
@@ -163,9 +163,9 @@ def rodar_busca_agora(request: Request, db: Session = Depends(banco), quem: Pess
 
 @rotas_admin.post("/atualizacoes/testar", dependencies=[Depends(exige_json)])
 def testar_conexoes(request: Request, db: Session = Depends(banco)):
-    """Testa SGA (só o login) e Power CRM (1 página). Respeita a trava do SGA."""
+    """Testa SGA (só o login), Power CRM (1 página) e Google (pastas e planilha). Respeita a trava do SGA."""
     cfg = config(request)
-    return {"sga": testar_sga(db, cfg), "powercrm": testar_powercrm(db, cfg)}
+    return {"sga": testar_sga(db, cfg), "powercrm": testar_powercrm(db, cfg), "drive": testar_drive(db, cfg)}
 
 
 @rotas_admin.get("/acessos")
