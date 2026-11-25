@@ -72,7 +72,9 @@ def importar_sistema_atual(db: Session, exp) -> dict:
                                     "ld": x.get("ld")}, "importacao")
         guardar(db, "rm:" + nome, rows, "importacao")
     # creditos_fixados e plt_cond (24/11): o creditos_fixados.json do Kit e a lista PLT_COND do script (app/busca/entrada.py)
-    for bloco in ("motivos", "rtcfg", "comp_registro", "creditos_fixados", "plt_cond"):
+    # notif_lideres (25/11): o notif_lideres.json do Kit (e-mails dos líderes e especialistas, para app/avisos.py).
+    # Tem e-mails: fica só no banco e nunca vai para /api/dados (pacote_da_pessoa não o lê).
+    for bloco in ("motivos", "rtcfg", "comp_registro", "creditos_fixados", "plt_cond", "notif_lideres"):
         if exp.get(bloco) is not None:
             guardar(db, bloco, exp[bloco], "importacao")
     marcacoes = importar_colecoes(db, exp.get("banco") or {})

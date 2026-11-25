@@ -16,7 +16,9 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 - **25/11 (branch `paridade-2411`):** script e página iguais ao sistema atual de 24/11 (inadimplente/inativo/retirada,
   Inside Sales, Cadastro com 2 telas, plantão por condição, reativação pelo boleto, Power CRM < 100, gravação de novembro).
   Plantão por condição e créditos fixados vêm do banco (`plt_cond`, `creditos_fixados`, pela importação), porque têm nomes.
-- **Falta para a virada:** comprovantes lidos do Drive (conta de serviço `escritorio-leitura@…` criada em 25/11), e-mails
+- **25/11 (branch `comprovantes-drive`):** comprovantes lidos do Drive pela conta de serviço (`app/comprovantes.py`), de
+  hora em hora como no sistema atual, e botão "Ler comprovantes agora" no Painel > Atualizações.
+- **Falta para a virada:** publicar a leitura dos comprovantes (conta de serviço `escritorio-leitura@…` criada em 25/11), e-mails
   de cancelados pelo servidor, acesso próprio do SGA e a exportação final do sistema atual.
 - **09/11:** cópias do sistema atual atualizadas (eram de 07/11): regra da adesão do liderado no nome do líder
   (`app/busca/liderado.py`), plantão sem placa (chassi ou nome) e séries sempre com `base[]`. A busca automática
@@ -116,6 +118,7 @@ como P0/P1 só o que expõe dado ou acesso de verdade; estilo e preferência, no
 | `app/dados.py` | Importação dos dados do sistema atual e o pacote de cada pessoa (geral, equipe ou especialista). |
 | `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
 | `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA, do Power CRM e do Google (Drive e Planilhas pela conta de serviço `escritorio-leitura@escritorio-do-especialista.iam.gserviceaccount.com`), todos somente leitura; trava do SGA, registro das buscas, teste de conexão. Ids das pastas e da planilha ficam no Render (`DRIVE_PASTA_COMPROVANTES`, `DRIVE_PASTA_REATIVACAO`, `PLANILHA_INSIDE_SALES`), não no repositório. |
+| `app/comprovantes.py` | Comprovantes de adesão lidos do Drive (descrição JSON de cada arquivo da pasta dos comprovantes), registro `comp_registro` (valor lido e conferência da `compconf`) e `cp`/`mk` nas adesões de `all`, `t:*` e `e:*` (porta do `pix.py`). Roda aos :25, das 7h às 15h e das 17h às 22h, e pelo botão "Ler comprovantes agora"; nunca com a busca completa rodando. |
 | `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, aplica a regra do liderado (`liderado.py`, porta do `liderado_pc.py`), grava os pacotes e agenda (06:00 e 16:00; `BUSCA_AUTOMATICA=0` desliga). |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .atualizacoes import painel as painel_de_atualizacoes
 from .atualizacoes import retirar_pausa_do_sga, testar_drive, testar_powercrm, testar_sga
 from .busca.completa import motivo_para_nao_rodar, rodar_em_segundo_plano
+from .comprovantes import atualizar_comprovantes
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
 from .dados import importar_sistema_atual, resumo_da_importacao
@@ -136,7 +137,10 @@ async def importar_do_sistema_atual(request: Request, db: Session = Depends(banc
 @rotas_admin.get("/atualizacoes")
 def ver_atualizacoes(request: Request, db: Session = Depends(banco)):
     r = painel_de_atualizacoes(db)
-    r["busca_automatica"] = config(request).busca_automatica
+    cfg = config(request)
+    r["busca_automatica"] = cfg.busca_automatica
+    r["comprovantes_automatico"] = bool(cfg.busca_automatica and cfg.google_service_account_json
+                                        and cfg.drive_pasta_comprovantes)
     return r
 
 
@@ -159,6 +163,14 @@ def rodar_busca_agora(request: Request, db: Session = Depends(banco), quem: Pess
         return {"ok": False, "mensagem": motivo}
     rodar_em_segundo_plano(request.app.state.Sessao, cfg, tipo="manual", pessoa_id=quem.id)
     return {"ok": True, "mensagem": "Busca iniciada. Leva alguns minutos; o resultado aparece no histórico abaixo."}
+
+
+@rotas_admin.post("/atualizacoes/comprovantes", dependencies=[Depends(exige_json)])
+def ler_comprovantes_agora(request: Request, quem: Pessoa = Depends(exige_painel)):
+    """Lê os comprovantes do Drive fora do horário (só o administrador). Só o Drive: leva poucos segundos."""
+    if quem.tipo != "admin":
+        raise HTTPException(403, "Só o administrador lê os comprovantes fora do horário.")
+    return atualizar_comprovantes(request.app.state.Sessao, config(request), pessoa_id=quem.id)
 
 
 @rotas_admin.post("/atualizacoes/testar", dependencies=[Depends(exige_json)])
