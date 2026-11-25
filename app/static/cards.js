@@ -247,7 +247,7 @@ async function cxDb() {
 }
 function cxSet(r, on) {
   const k = cxKey(r); CXE.mem.set(k, on);
-  const v = on ? { t: Date.now(), by: (S.admin ? 'Coordenação' : (S.specs[0] && S.specs[0].nome) || '') } : 0;
+  const v = on ? { t: Date.now(), by: (S.admin ? (RING && RING.cad ? 'Cadastro' : 'Coordenação') : (S.specs[0] && S.specs[0].nome) || '') } : 0;
   CXE.map[k] = v;
   if (!CXE.db) { toast('Não foi possível salvar na nuvem agora'); return; }
   const ref = CXE.db.collection('comp').doc('cancenv');
@@ -255,20 +255,46 @@ function cxSet(r, on) {
 }
 function renderCanc() {
   cxDb();
-  const rows = cancRows().slice().sort((a, b) => b.dc.localeCompare(a.dc) || a.n.localeCompare(b.n));
+  const rowsX = cancRows().slice().sort((a, b) => b.dc.localeCompare(a.dc) || a.n.localeCompare(b.n));
+  const nIa = rowsX.filter(r => r.st === 'inad' && !r.rs).length, nIt = rowsX.filter(r => r.st === 'inat' && !r.rs).length, nRx = rowsX.filter(r => r.st && r.rs).length, nRt = rowsX.filter(r => r.st === 'ret' && !r.rs).length;
+  const rows = rowsX.filter(r => !r.st);
   const mesAt = E.data.meses_base[E.data.meses_base.length - 1], mesAnt = E.data.meses_base[E.data.meses_base.length - 2];
-  $('cancSub').textContent = 'Veículos que passaram para cancelado em ' + mlab(mesAnt) + ' e ' + mlab(mesAt) + ' e continuam cancelados. Não entra na promoção: margem abaixo de 70% ou menos de 3 boletos pagos (margem e boletos: BI Brasil Atuarial).';
+  $('cancSub').textContent = 'Veículos que passaram para cancelado em ' + mlab(mesAnt) + ' e ' + mlab(mesAt) + ' e continuam cancelados (junto, os que passaram para inadimplente, inativo ou retirada e continuam assim). Não entra na promoção: margem abaixo de 70% ou menos de 3 boletos pagos (margem e boletos: BI Brasil Atuarial).';
   const neg = rows.filter(r => cancMotivo(r).length && !cancCoord(r)).length, coord = rows.filter(cancCoord).length;
   const nRs = rows.filter(r => r.rs).length;
-  $('cancSum').innerHTML = (nRs ? `<span class="rs">${nf(nRs)} remarketing realizado</span>` : '') + `<span>${nf(rows.length)} cancelados</span><span class="ok">${nf(rows.length - neg - coord)} entram na promoção</span><span class="mid">${nf(coord)} negociar com o coordenador</span><span class="no">${nf(neg)} não entram</span>`;
+  $('cancSum').innerHTML = (nRs ? `<span class="rs">${nf(nRs)} remarketing realizado</span>` : '') + `<span>${nf(rows.length)} cancelados</span><span class="ok">${nf(rows.length - neg - coord)} entram na promoção</span><span class="mid">${nf(coord)} negociar com o coordenador</span><span class="no">${nf(neg)} não entram</span>` + (nIa ? `<span class="ia">${nf(nIa)} inadimplentes</span>` : '') + (nIt ? `<span class="it">${nf(nIt)} inativos</span>` : '') + (nRt ? `<span class="rtq">${nf(nRt)} em retirada</span>` : '') + (nRx ? `<span class="rs">${nf(nRx)} voltaram a ficar ativos</span>` : '');
   const all = rows.length, q = norm($('cancQ').value.trim()), qp = q.replace(/[^a-z0-9]/g, '');
   const nEnv = rows.filter(r => !r.rs && cxSent(r)).length;
-  document.querySelectorAll('#cancSit [data-cs]').forEach(b => { b.setAttribute('aria-pressed', b.dataset.cs === CXE.sit); b.textContent = { all: 'Todos', pend: 'Pendentes (' + nf(rows.length - nEnv - nRs) + ')', sent: 'Enviados (' + nf(nEnv) + ')', resg: 'Reativados (' + nf(nRs) + ')' }[b.dataset.cs]; });
-  if (CXE.sit !== 'all') rows.splice(0, rows.length, ...rows.filter(r => CXE.sit === 'resg' ? !!r.rs : !r.rs && cxSent(r) === (CXE.sit === 'sent')));
+  document.querySelectorAll('#cancSit [data-cs]').forEach(b => { b.setAttribute('aria-pressed', b.dataset.cs === CXE.sit); b.textContent = { all: 'Todos', pend: 'Pendentes (' + nf(rows.length - nEnv - nRs) + ')', sent: 'Enviados (' + nf(nEnv) + ')', resg: 'Reativados (' + nf(nRs + nRx) + ')', inad: 'Inadimplentes (' + nf(nIa) + ')', inat: 'Inativos (' + nf(nIt) + ')', ret: 'Retirada (' + nf(nRt) + ')' }[b.dataset.cs]; });
+  if (CXE.sit === 'inad' || CXE.sit === 'inat' || CXE.sit === 'ret') rows.splice(0, rows.length, ...rowsX.filter(r => r.st === CXE.sit && !r.rs));
+  else if (CXE.sit === 'resg') rows.splice(0, rows.length, ...rowsX.filter(r => !!r.rs));
+  else if (CXE.sit !== 'all') rows.splice(0, rows.length, ...rows.filter(r => CXE.sit === 'resg' ? !!r.rs : !r.rs && cxSent(r) === (CXE.sit === 'sent')));
+  else rows.splice(0, rows.length, ...rowsX);
   if (q) rows.splice(0, rows.length, ...rows.filter(r => norm(r.n).includes(q) || (qp && norm(r.pl).replace(/[^a-z0-9]/g, '').includes(qp)) || (qp && String(r.mat || '').includes(qp))));
   $('cancQn').textContent = q ? 'Mostrando ' + nf(rows.length) + ' de ' + nf(all) : '';
   if (!rows.length) { $('cancList').innerHTML = '<p class="empty">' + (q ? 'Nenhum cancelado com essa placa ou nome.' : 'Nenhum cancelado nesse período para esta seleção.') + '</p>'; $('cancList')._rows = []; return; }
   $('cancList').innerHTML = rows.map((r, i) => {
+    if (r.st) {
+      const lab = { inad: 'INADIMPLENTE', inat: 'INATIVO', ret: 'RETIRADA' }[r.st] || String(r.st).toUpperCase(), veh = [r.mod, r.ano, r.pl].filter(Boolean).join(' · ');
+      return `<article class="cx ${r.rs ? 'resg' : r.st}" data-i="${i}">
+      <div>
+        <div class="who-line"><h3>${esc(r.n)}</h3>${r.moto ? '<span class="chip moto">MOTO</span>' : ''}<span class="chip">${lab}</span>${r.rs ? '<span class="chip ok">ATIVO NOVAMENTE</span>' : ''}</div>
+        <p class="veh">${esc(veh)}</p>
+        ${r.mot && r.mot !== 'Sem motivo registrado' || r.obs ? `<p class="mot"><b>Motivo:</b> ${esc(r.mot || '')}${r.obs && norm(r.obs).replace(/[^a-z]/g, '') !== norm(r.mot || '').replace(/[^a-z]/g, '') ? ` <span>“${esc(r.obs)}”</span>` : ''}</p>` : ''}
+        <div class="meta"><span>${r.rs ? ({ inad: 'Ficou inadimplente em', inat: 'Ficou inativo em', ret: 'Entrou em retirada em' }[r.st] || 'Desde') : ({ inad: 'Inadimplente desde', inat: 'Inativo desde', ret: 'Em retirada desde' }[r.st] || 'Desde')} ${esc(r.dc.split('-').reverse().join('/'))}</span><span>${esc(r.esp)}</span><span>Equipe ${esc(E.data.nomes[r.t] || r.t || '—')}</span>${r.wa ? `<span>${esc(r.wa.replace(/^55(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3'))}</span>` : ''}</div>
+      </div>
+      <div class="facts">
+        <div class="row2">Margem<b>${r.mp == null ? 'sem dado' : pf(r.mp, 0)}</b></div>
+        <div class="row2">Boletos pagos<b>${r.b == null ? 'sem dado' : nf(r.b)}</b></div>
+        <div class="row2">Matrícula<b>${esc(r.mat)}</b></div>
+      </div>
+      ${Array.isArray(r.ov) && r.ov.length ? `<p class="basebox cont"><b>Tem outro veículo ativo</b> na base: ${esc(r.ov.join(', '))}</p>` : ''}
+      ${r.st === 'ret' && !r.rs ? (r.rr && r.rr.ok ? `<p class="rrbox ok"><b>Rastreador desvinculado: já pode fazer nova adesão.</b><span>${esc(r.rr.st)}${r.rr.d ? ' em ' + esc(r.rr.d) : ''} · atendimento de remoção do rastreador no SGA</span></p>`
+        : `<p class="rrbox no"><b>Rastreador ainda vinculado: não pode fazer nova adesão.</b><span>${r.rr && r.rr.st ? esc(r.rr.st) + (r.rr.d ? ' em ' + esc(r.rr.d) : '') + ' · atendimento de remoção do rastreador no SGA' : 'Sem atendimento de remoção do rastreador no SGA'}</span></p>`) : ''}
+      ${r.rs ? `<div class="resg-ok">${RS_IC}<div><b>Voltou a ficar ativo!</b><span>Ativo novamente em ${esc(String(r.rs.dc || '').split('-').reverse().join('/'))}${r.rs.sit ? ' · ' + esc(r.rs.sit) + ' no SGA' : ''}.</span></div></div>`
+        : `<div class="actions" data-st-wa>${r.wa ? `<a class="btn wa" href="https://wa.me/${esc(r.wa)}" target="_blank" rel="noopener">Abrir WhatsApp</a>` : '<span class="btn wa off">Sem celular válido</span>'}</div>`}
+    </article>`;
+    }
     const why = cancMotivo(r), mid = cancCoord(r), bad = why.length > 0 && !mid, rs = r.rs || null;
     const veh = [r.mod, r.ano, r.pl].filter(Boolean).join(' · ');
     const env = cxSent(r), ev_ = CXE.map[cxKey(r)];
@@ -294,7 +320,7 @@ function renderCanc() {
   }).join('');
   $('cancList')._rows = rows;
 }
-$('list').addEventListener('click', e => { const b = e.target.closest('[data-goc]'); if (!b) return; showView('evo'); $('cancQ').value = b.dataset.goc; renderCanc(); setTimeout(() => $('cancTitle').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); });
+$('list').addEventListener('click', e => { const b = e.target.closest('[data-goc]'); if (!b) return; CXE.sit = 'all'; showView('evo'); $('cancQ').value = b.dataset.goc; renderCanc(); setTimeout(() => $('cancTitle').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); });
 document.querySelectorAll('#cancSit [data-cs]').forEach(b => b.addEventListener('click', () => { CXE.sit = b.dataset.cs; renderCanc(); }));
 $('cancList').addEventListener('change', ev => {
   const c = ev.target.closest('[data-cxs]'); if (!c) return;
@@ -341,11 +367,25 @@ const HOME_ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h1
 function homeStatus(v) {
   try {
     if (v === 'list') return nf(S.rows.length) + ' ex-associados na lista';
-    if (v === 'evo') return E.data && E.data.canc ? nf(E.data.canc.length) + ' cancelados recentes' : 'Base ativa e cancelados';
+    if (v === 'evo') return E.data && E.data.canc ? nf(E.data.canc.filter(r => !r.st).length) + ' cancelados recentes' : 'Base ativa e cancelados';
     if (v === 'rt') return 'Envio de prints e conferência';
   } catch (e) {}
   return E.data && E.data.atualizado ? 'Atualizado em ' + new Date(E.data.atualizado).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Abrir';
 }
+function cadNomes() {             // acesso Cadastro: Lista do remarketing = Remarketing estático; Evolução da base = Remarketing dinâmico
+  HOME_CARDS.list = Object.assign({}, HOME_CARDS.list, { t: 'Remarketing estático', d: 'Ex-associados de todas as equipes para chamar no WhatsApp com a mensagem da promoção de retorno já pronta. Quem também está no Remarketing dinâmico aparece marcado.' });
+  HOME_CARDS.evo = Object.assign({}, HOME_CARDS.evo, { t: 'Remarketing dinâmico', d: 'Cancelados recentes, retiradas, inativos e inadimplentes de todas as equipes, com a mensagem pronta, e a base ativa mês a mês.' });
+  const tl = document.querySelector('[data-view="list"]'), tv = document.querySelector('[data-view="evo"]');
+  if (tl) tl.textContent = 'Remarketing estático'; if (tv) tv.lastChild.textContent = ' Remarketing dinâmico';
+}
+function dynDe(r) {               // mesmo associado (matrícula) ou mesmo WhatsApp nos cancelados recentes, retiradas, inativos e inadimplentes
+  try {
+    if (!(RING && RING.cad) || !E.data || !E.data.canc) return null;
+    if (!E._dyn || E._dyn.src !== E.data.canc) { const m = new Map(), w = new Map(); E.data.canc.forEach(c => { if (c.mat && !m.has(String(c.mat))) m.set(String(c.mat), c); if (c.wa && !w.has(String(c.wa))) w.set(String(c.wa), c); }); E._dyn = { src: E.data.canc, m, w }; }
+    return E._dyn.m.get(String(r.mat)) || (r.wa ? E._dyn.w.get(String(r.wa)) : null) || null;
+  } catch (e) { return null; }
+}
+const dynSit = c => c.rs ? 'ativo novamente' : { inad: 'inadimplente', inat: 'inativo', ret: 'em retirada' }[c.st] || 'cancelado recente';
 function renderHome() {
   const tabs = [...document.querySelectorAll('.view-tab')].filter(b => !b.hidden && HOME_CARDS[b.dataset.view]);
   $('home').innerHTML = tabs.map((b, i) => { const c = HOME_CARDS[b.dataset.view];
@@ -397,7 +437,7 @@ function renderEvo() {
   const teamName = E.esp && !d.ld ? E.esp : E.team ? (d.nomes[E.team] || E.team) : 'Todas as equipes';
   const lider = E.team && (d.leaders[E.team] || (d.cartl || {})[E.team]), cartOnly = !!(E.team && !d.leaders[E.team] && (d.cartl || {})[E.team]);
   const segName = E.seg === 'liderados' && E.lid ? 'liderado ' + nomeCurto(E.lid, []) : { equipe: 'equipe toda', propria: d.ld ? 'carteira' : E.admin ? 'base de ' + (lider || '') : 'minha base', liderados: 'todos os liderados' }[E.seg];
-  $('evoTitle').textContent = 'Evolução da base · ' + teamName;
+  $('evoTitle').textContent = (RING && RING.cad ? 'Remarketing dinâmico · ' : 'Evolução da base · ') + teamName;
   $('evoSub').textContent = E.esp && !d.ld ? d.rot ? d.rot : (d.cart ? 'Carteira ' + (d.nomes[d.eq] || d.eq) + ': todos os veículos da carteira' : 'Sua base: veículos em que você é o especialista' + (d.eq && d.nomes[d.eq] ? ' · equipe ' + d.nomes[d.eq] : '')) : (lider ? cartOnly ? 'Voluntário da carteira: ' + lider + ' · ' : (d.ld ? lider + ' + liderados da equipe' + (d.ldx ? ' (sem ' + d.ldx + ')' : '') + ' · ' : 'Líder: ' + lider + ' · ') : '') + 'Mostrando: ' + segName +
     (E.seg === 'propria' ? (d.ld || cartOnly ? ' (veículos da carteira)' : ' (veículos em que o líder é o especialista)') : E.seg === 'liderados' && !E.lid ? (d.ld || cartOnly ? ' (equipe sem os veículos da carteira)' : ' (equipe sem os veículos do líder)') : E.lid ? ((d.vin || []).includes(E.lid) ? ' (vendas dela na carteira, cruzando SGA e Power CRM)' : ' (veículos da equipe em que ele é o especialista)') : '');
   const VA = d.val_ate;
@@ -597,12 +637,24 @@ function renderVA() {
     VB = idx.slice().reverse().map(i => {
       const m = d.meses_ad[i], val = i <= d.val_ate, v = (s.va || [])[i] || 0;
       const rv = ((d.pend || {}).rows || []).filter(r => r.tipo === 'reat' && r.val && r.t === d.vi.t && r.mes === m).length;
-      const L = (d.ades || []).filter(a => a.m === m && a.t === d.vi.t).map(r => cpCalc(r)).filter(c => c.tem);
+      const L = (d.ades || []).filter(a => a.m === m && a.t === d.vi.t).map(r => { const c = cpCalc(r), dsc = c.inst && !c.mk.nc ? (c.lagos ? LAGOS_VAL : INST_VAL[c.inst]) : 0; return Object.assign({}, c, { desc: dsc, rec: (c.v || 0) - dsc }); }).filter(c => c.tem);   // 20/11 (Rafael): no bônus da vendedora interna o rastreador é descontado, menos nas adesões de dia de meta batida (nc)
       const anex = L.reduce((a, c) => a + c.rec, 0), hit = v >= meta;
       return { m, v, rv, val, hit, n: L.length, anex, bon: hit ? Math.max(0, anex) / 2 : 0, falta: Math.max(0, meta - v) };
     });
     const r0 = VB[0], totV = VB.reduce((a, r) => a + r.bon, 0);
-    bonStat = VA.mes === 'ano' ? [brl(totV), 'Seu bônus no ano'] : [!r0 ? '—' : r0.hit ? brl(r0.bon) : 'Faltam ' + nf(r0.falta), 'Seu bônus (meta ' + nf(meta) + ' validadas)' + (r0 && !r0.val ? ' · parcial' : '')];
+    bonStat = VA.mes === 'ano' ? [brl(totV), 'Seu bônus no ano'] : [!r0 ? '—' : r0.hit ? 'Meta batida · ' + brl(r0.bon) : 'Faltam ' + nf(r0.falta), 'Seu bônus (meta ' + nf(meta) + ' validadas)' + (r0 && !r0.val ? ' · parcial' : '')];
+  }
+  /* 20/11 (Rafael): coordenação vê o bônus do Inside Sales nominal (Nalva e Camila), também no relatório */
+  let IB = [];
+  if (!d.vi && d.vib && (!t || norm(t).startsWith('exodus'))) {
+    idx.slice().reverse().forEach(i => d.vib.forEach(w => {
+      const m = d.meses_ad[i], val = i <= d.val_ate, z = ((d.vesp || {})[w.t] || {})[w.key] || {}, v = (z.va || [])[i] || 0, meta = w.meta || 15;
+      const L = (d.ades || []).filter(a => (a.t === w.t && norm(a.esp) === norm(w.nome) && a.m === m) || (a.vf && norm(a.vf) === norm(w.first) && (a.vfm || a.m) === m)).map(r => { const c = cpCalc(r), dsc = c.inst && !c.mk.nc ? (c.lagos ? LAGOS_VAL : INST_VAL[c.inst]) : 0; return Object.assign({}, c, { desc: dsc, rec: (c.v || 0) - dsc }); }).filter(c => c.tem);
+      const anex = L.reduce((s_, c) => s_ + c.rec, 0), hit = v >= meta;
+      IB.push({ m, nome: w.nome, v, val, hit, meta, n: L.length, anex, bon: hit ? Math.max(0, anex) / 2 : 0, falta: Math.max(0, meta - v) });
+    }));
+    if (t) { const m0 = IB.length ? IB[0].m : null, cur = IB.filter(r => r.m === m0), tb = (VA.mes === 'ano' ? IB : cur).reduce((a, r) => a + r.bon, 0);
+      bonStat = [tb ? brl(tb) : cur.map(r => r.nome.split(' ')[0] + ': faltam ' + nf(r.falta)).join(' · ') || '—', 'Bônus do Inside Sales (meta 15 validadas)']; }
   }
   VA.rep = { arq: 'Adesoes validadas', titulo: 'Adesões validadas', eq: teamName, lider: lider || '', per, upd: d.atualizado, stats: [[nf(A), 'Adesões'], [nf(Vv), 'Adesões validadas'], [A ? pf(Vv / A, 1) : '—', 'Taxa de validação'], bonStat], tabs: [] };
   $('vaStats').innerHTML = [[nf(A), 'Adesões'], [nf(Vv), 'Adesões validadas'], [A ? pf(Vv / A, 1) : '—', 'Taxa de validação'], bonStat]
@@ -640,17 +692,25 @@ function renderVA() {
       <td>${r.f ? `<span class="pill ok">${nf(r.f[0])} validadas</span>` : '<span class="pill">não atingiu</span>'}</td>
       <td class="nw"><b>${r.f ? brl(r.f[1]) : '—'}</b></td>
       <td>${r.prox ? 'faltaram ' + nf(r.prox[0] - r.v) + ' p/ ' + nf(r.prox[0]) + ' (' + brl(r.prox[1]) + ')' : 'faixa máxima'}</td></tr>`).join('')}</tbody></table>`;
+  if (IB.length) {
+    const ibh = `<h3 style="margin-top:18px">Bônus do Inside Sales</h3><p class="legend">Meta: 15 validadas no mês (adesões com o 1º boleto pago + reativações validadas + créditos fixados). Batendo a meta, o bônus é a metade da soma dos comprovantes anexados no mês, descontado o rastreador (menos nas adesões de dia de meta batida).</p>
+      <table class="vtab"><thead><tr><th>Mês</th><th>Vendedora</th><th>Validadas</th><th>Meta de 15</th><th class="r">Comprovantes anexados (sem rastreador)</th><th class="r">Bônus</th></tr></thead><tbody>${IB.map(r => `<tr${r.hit ? ' class="win"' : ''}><td class="nw">${mlab(r.m)}${r.val ? '' : '<span class="sub">parcial, em validação</span>'}</td><td>${esc(r.nome)}</td><td><b>${nf(r.v)}</b></td><td>${r.hit ? '<span class="pill ok">Meta batida</span>' : '<span class="pill">' + (r.val ? 'faltaram ' : 'faltam ') + nf(r.falta) + '</span>'}</td><td class="r nw">${nf(r.n)} · ${brl(r.anex)}</td><td class="r nw"><b>${r.hit ? brl(r.bon) : '—'}</b></td></tr>`).join('')}</tbody></table>`;
+    $('vaBonus').innerHTML = (bon.length ? $('vaBonus').innerHTML : '') + ibh;
+    if (!bon.length) $('vaBonT').textContent = 'Bônus do Inside Sales · ' + per;
+    VA.rep.tabs.push({ t: 'Bônus do Inside Sales', nota: 'Meta: 15 validadas no mês. Batendo a meta, o bônus é a metade dos comprovantes anexados no mês, descontado o rastreador (menos nas adesões de dia de meta batida).', head: ['Mês', 'Vendedora', 'Validadas', 'Meta', 'Comprovantes anexados (sem rastreador)', 'Bônus'], r: [2, 4, 5],
+      body: IB.map(r => [mlab(r.m) + (r.val ? '' : ' (parcial)'), r.nome, nf(r.v), r.hit ? 'Meta batida' : (r.val ? 'faltaram ' : 'faltam ') + nf(r.falta), nf(r.n) + ' · ' + brl(r.anex), r.hit ? brl(r.bon) : '—']), hl: IB.map((r, i) => r.hit ? i : -1).filter(i => i >= 0) });
+  }
   if (VB) {
     const meta = d.vi.meta || 15;
     $('vaBonT').textContent = 'Seu bônus · ' + per;
     VA.rep.tabs = VA.rep.tabs.filter(x => x.t !== 'Bônus do líder');
     VA.rep.tabs.push({ t: 'Seu bônus', nota: 'Meta: ' + meta + ' validadas no mês (adesões com o 1º boleto pago + reativações validadas). Batendo a meta, o bônus é a metade da soma dos comprovantes anexados no mês, já descontada a instalação do rastreador.',
       head: ['Mês', 'Validadas', 'Meta', 'Comprovantes anexados (sem instalação)', 'Bônus'], r: [1, 3, 4],
-      body: VB.map(r => [mlab(r.m) + (r.val ? '' : ' (parcial)'), nf(r.v), r.hit ? 'bateu' : (r.val ? 'faltaram ' : 'faltam ') + nf(r.falta), nf(r.n) + ' · ' + brl(r.anex), r.hit ? brl(r.bon) : '—']), hl: VB.map((r, i) => r.hit ? i : -1).filter(i => i >= 0) });
+      body: VB.map(r => [mlab(r.m) + (r.val ? '' : ' (parcial)'), nf(r.v), r.hit ? 'Meta batida' : (r.val ? 'faltaram ' : 'faltam ') + nf(r.falta), nf(r.n) + ' · ' + brl(r.anex), r.hit ? brl(r.bon) : '—']), hl: VB.map((r, i) => r.hit ? i : -1).filter(i => i >= 0) });
     $('vaBonus').innerHTML = !VB.length ? '<p class="empty">Sem meses nesse período.</p>' : `<p class="legend">Meta: ${nf(meta)} validadas no mês (adesões com o 1º boleto pago + reativações validadas). Batendo a meta, o bônus é a metade da soma dos comprovantes anexados no mês, já descontada a instalação do rastreador.</p>
       <table class="vtab"><thead><tr><th>Mês</th><th>Validadas</th><th>Meta de ${nf(meta)}</th><th class="r">Comprovantes anexados (sem instalação)</th><th class="r">Bônus</th></tr></thead><tbody>${VB.map(r => `<tr${r.hit ? ' class="win"' : ''}>
         <td class="nw">${mlab(r.m)}${r.val ? '' : '<span class="sub">parcial, em validação</span>'}</td><td><b>${nf(r.v)}</b><span class="sub">${nf(r.v - r.rv)} de adesão${r.rv ? ' + ' + nf(r.rv) + ' de reativação' : ''}</span></td>
-        <td>${r.hit ? '<span class="pill ok">bateu</span>' : '<span class="pill">' + (r.val ? 'faltaram ' : 'faltam ') + nf(r.falta) + '</span>'}</td>
+        <td>${r.hit ? '<span class="pill ok">Meta batida</span>' : '<span class="pill">' + (r.val ? 'faltaram ' : 'faltam ') + nf(r.falta) + '</span>'}</td>
         <td class="r nw">${nf(r.n)} · ${brl(r.anex)}</td><td class="r nw"><b>${r.hit ? brl(r.bon) : '—'}</b></td></tr>`).join('')}</tbody></table>`;
   }
   /* 1º boleto pendente */
@@ -1061,7 +1121,7 @@ function cpCalc(r) {
   const v = pg != null ? pg : vc;
   return { mk, inst, nc, isen, lagos, desc, v, vc, pg, rec: (v || 0) - desc, ok: !!mk.ok, tem: !!r.cp || pg != null, comp: !!r.cp };
 }
-if (location.protocol === 'file:') window.__teste = { cpMark: r => cpMark(r), cpCalc: r => cpCalc(r), cpKey: r => cpKey(r), get CP() { return CP; }, get E() { return E; } };   // só nos testes de regressão (arquivo local); no link publicado não existe
+if (location.protocol === 'file:') window.__teste = { cpMark: r => cpMark(r), cpCalc: r => cpCalc(r), cpKey: r => cpKey(r), renderCanc: () => renderCanc(), dynDe: r => dynDe(r), get CP() { return CP; }, get E() { return E; }, get S() { return S; } };   // só nos testes de regressão (arquivo local); no link publicado não existe
 function setupCP() {
   const d = E.data, ms = (d.meses_ad || []).filter(k => k >= CP_DESDE);
   const tab = document.querySelector('[data-view="cp"]');
@@ -1082,7 +1142,7 @@ async function cpDb() {
   try { CP.db = await window.claude.use('db'); } catch (e) { CP.db = null; }
   if (!CP.db) { renderCP(); return; }
   try {
-    CP.db.collection('comp').onSnapshot(snap => { CP.marks = {}; snap.docs.forEach(x => { CP.marks[x.id] = x.data() || {}; }); CP.live = true; renderCP(); if (E.data && E.data.vi && !$('vaView').hidden) renderVA(); }, () => renderCP());
+    CP.db.collection('comp').onSnapshot(snap => { CP.marks = {}; CP.ids = new Set(); snap.docs.forEach(x => { CP.marks[x.id] = x.data() || {}; CP.ids.add(x.id); }); CP.live = true; if (cpEditando()) CP._depois = true; else renderCP(); if (E.data && E.data.vi && !$('vaView').hidden) renderVA(); }, () => renderCP());
   } catch (e) { renderCP(); }
 }
 function cpRows() {
@@ -1204,21 +1264,39 @@ async function renderCP() {
   CP.vis = L.map(x => x.r); $('cpBulk').hidden = !confere || !C.length; cpSelInfo();
   $('cpUpd').textContent = 'Dados atualizados em ' + new Date(d.atualizado).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '. Adesões e instalações: direto do SGA. Comprovantes: pasta "Comprovantes de adesões" no Google Drive.';
 }
-async function cpSave(mes, key, patch) {
-  if (!CP.db) { toast('Entre no claude.ai para marcar'); return; }
+/* 12/11: só diz "salvo" depois que o banco confirma; nunca regrava o documento inteiro (isso apagava marcações de outra pessoa) */
+function cpStatus(t, err) { const el = $('toast'); if (!el) return; el.textContent = t; el.hidden = false; el.style.background = err ? '#a3261f' : ''; clearTimeout(el._t); el._t = setTimeout(() => { el.hidden = true; el.style.background = ''; }, err ? 9000 : 2600); }
+async function cpGrava(mes, upd, novo) {
   const ref = CP.db.collection('comp').doc(mes);
+  try {
+    let existe = CP.ids ? CP.ids.has(mes) : !novo;
+    if (!existe) { try { existe = !!(await ref.get()).exists; } catch (e0) { existe = false; } }
+    if (existe) await ref.update(upd);
+    else { await ref.set(upd); if (CP.ids) CP.ids.add(mes); }   // documento do mês ainda não existe no banco: cria com estas marcações
+    return true;
+  }
+  catch (e) {
+    cpStatus('NÃO SALVOU. Confira a internet e faça de novo (' + (e && (e.code || e.message) || 'erro') + ')', true); return false;
+  }
+}
+async function cpSave(mes, key, patch, msg, quiet) {
+  if (!CP.db) { toast('Entre no claude.ai para marcar'); return false; }
+  const novo = !Object.keys(CP.marks[mes] || {}).length;
   const cur = Object.assign({}, (CP.marks[mes] || {})[key] || {}, patch);
-  CP.marks[mes] = Object.assign({}, CP.marks[mes] || {}, { [key]: cur }); renderCP();
-  try { await ref.update({ [key]: cur }); }
-  catch (e) { try { await ref.set(Object.assign({}, CP.marks[mes])); } catch (e2) { toast('Não foi possível salvar (' + (e2 && (e2.code || e2.message) || 'erro') + ')'); } }
+  CP.marks[mes] = Object.assign({}, CP.marks[mes] || {}, { [key]: cur }); if (!quiet) renderCP();
+  cpStatus('Salvando…');
+  const okG = await cpGrava(mes, { [key]: cur }, novo);
+  if (okG) cpStatus((msg || 'Salvo') + ' ✓');
+  return okG;
 }
 async function cpSaveMany(mes, patches) {      // { chave: alterações } numa gravação só
   if (!CP.db) { toast('Entre no claude.ai para marcar'); return false; }
   const ref = CP.db.collection('comp').doc(mes), upd = {};
   for (const [key, patch] of Object.entries(patches)) upd[key] = Object.assign({}, (CP.marks[mes] || {})[key] || {}, patch);
+  const novo = !Object.keys(CP.marks[mes] || {}).length;
   CP.marks[mes] = Object.assign({}, CP.marks[mes] || {}, upd); renderCP();
-  try { await ref.update(upd); return true; }
-  catch (e) { try { await ref.set(Object.assign({}, CP.marks[mes])); return true; } catch (e2) { toast('Não foi possível salvar (' + (e2 && (e2.code || e2.message) || 'erro') + ')'); return false; } }
+  void ref; cpStatus('Salvando…');
+  return cpGrava(mes, upd, novo);
 }
 const cpWho = () => CP.role === 'fin' ? 'Financeiro' : 'Coordenação';
 function cpSelRows() { return CP.vis.filter(r => CP.sel.has(cpKey(r))); }
@@ -1266,12 +1344,32 @@ $('cpList').addEventListener('change', e => {
   const cs = e.target.closest('select[data-cfs]'); if (cs) { CP.cf[cs.dataset.cfs] = cs.value; renderCP(); return; }
   const sa = e.target.closest('input[data-selall]'); if (sa) { CP.vis.forEach(r => sa.checked ? CP.sel.add(cpKey(r)) : CP.sel.delete(cpKey(r))); renderCP(); return; }
   const se = e.target.closest('input[data-sel]'); if (se) { se.checked ? CP.sel.add(se.dataset.sel) : CP.sel.delete(se.dataset.sel); const a = document.querySelector('#cpList input[data-selall]'); if (a) a.checked = CP.vis.every(r => CP.sel.has(cpKey(r))); cpSelInfo(); return; }
-  const pg = e.target.closest('input[data-pg]'); if (pg) { const v = pnum(pg.value); cpSave(CP.mes, pg.dataset.pg, v == null ? { pg: null, pgby: '', pgat: '', pgl: '' } : { pg: v, pgby: cpWho(), pgat: new Date().toISOString(), pgl: 'avulso' }); toast(v == null ? 'Pagamento retirado' : 'Pagamento lançado: ' + brl(v)); return; }
+  const pg = e.target.closest('input[data-pg]'); if (pg) { cpFlush(pg); return; }
   const who = cpWho(), at = new Date().toISOString();
   const ok = e.target.closest('input[data-ok]'); if (ok) { cpSave(CP.mes, ok.dataset.ok, { ok: ok.checked, okby: ok.checked ? who : '', okat: ok.checked ? at : '' }); toast(ok.checked ? 'Comprovante validado' : 'Validação retirada'); return; }
   const nc = e.target.closest('input[data-nc]'); if (nc) { cpSave(CP.mes, nc.dataset.nc, { nc: nc.checked }); return; }
-  const ob = e.target.closest('input[data-obs]'); if (ob) { cpSave(CP.mes, ob.dataset.obs, { obs: ob.value.trim() }); toast('Observação salva'); }
+  const ob = e.target.closest('input[data-obs]'); if (ob) { cpFlush(ob); }
 });
+/* 12/11: valor pago e observação gravam enquanto digita (0,9 s depois da última tecla) e ao sair/fechar a página.
+   Antes só gravavam ao sair do campo: quem digitava e fechava perdia o valor. */
+function cpEditando() { const a = document.activeElement; return !!(a && a._sujo && a.matches && a.matches('#cpList input[data-pg], #cpList input[data-obs]')); }
+function cpFlush(inp) {
+  clearTimeout(inp._t); if (!inp._sujo) return; inp._sujo = false;
+  const quiet = document.activeElement === inp;
+  if (inp.dataset.pg) {
+    const k = inp.dataset.pg, v = pnum(inp.value);
+    cpSave(CP.mes, k, v == null ? { pg: null, pgby: '', pgat: '', pgl: '' } : { pg: v, pgby: cpWho(), pgat: new Date().toISOString(), pgl: 'avulso' },
+      v == null ? 'Pagamento retirado' : 'Pagamento salvo: ' + brl(v), quiet);
+  } else if (inp.dataset.obs) cpSave(CP.mes, inp.dataset.obs, { obs: inp.value.trim() }, 'Observação salva', quiet);
+}
+function cpFlushTodos() { document.querySelectorAll('#cpList input[data-pg], #cpList input[data-obs]').forEach(cpFlush); }
+$('cpList').addEventListener('input', e => {
+  const inp = e.target.closest('input[data-pg], input[data-obs]'); if (!inp) return;
+  inp._sujo = true; clearTimeout(inp._t); inp._t = setTimeout(() => cpFlush(inp), 900);
+});
+$('cpList').addEventListener('focusout', () => { if (CP._depois) { CP._depois = false; setTimeout(() => { if (!cpEditando()) renderCP(); else CP._depois = true; }, 50); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) cpFlushTodos(); });
+window.addEventListener('pagehide', cpFlushTodos);
 $('cpTeam').addEventListener('change', e => { CP.team = e.target.value; CP.esp = ''; CP.sel.clear(); renderCP(); });
 $('cpEsp').addEventListener('change', e => { CP.esp = e.target.value; renderCP(); });
 $('cpMes').addEventListener('change', e => { CP.mes = e.target.value; CP.sel.clear(); renderCP(); });
@@ -1427,6 +1525,7 @@ function startApp(specs, admin, ring) {
   S.rows = rows;
   if (admin) {
     $('hName').textContent = ring && ring.cad ? 'Cadastro' : 'Coordenação';
+    if (ring && ring.cad) cadNomes();
     $('hWho').textContent = specs.length + ' especialistas · ' + rows.length + ' ex-associados';
     const se = $('selEsp'); se.hidden = false;
     se.innerHTML = '<option value="">Todos os especialistas</option>' +
@@ -1467,7 +1566,7 @@ function rsBox(rs) {
   return `<div class="resg-ok">${RS_IC}<div><b>Parabéns! Você conseguiu realizar esse remarketing.</b><span>${rs.tp === 'reativado' ? 'Reativado' : 'Contrato'} em ${esc(d)}${rs.pl ? ' · ' + esc(rs.pl) : ''}${rs.sit ? ' · ' + esc(rs.sit) + ' no SGA' : ''}. A mensagem da promoção foi travada.</span></div></div>`;
 }
 function card(r) {
-  const rs = rsDe(r);
+  const rs = rsDe(r), dy = dynDe(r);
   const sent = isSent(r);
   const rank = S.admin ? (S.esp ? r.rk : r._g) : r.rk;
   const alert = r.fipe != null && r.vp && r.fipe < 0.5 * r.vp;
@@ -1493,6 +1592,7 @@ function card(r) {
         <span class="chip${r.moto ? ' moto' : ''}">${r.moto ? 'MOTO' : 'CARRO'}</span>
         ${alert ? '<span class="chip alert" title="FIPE atual menor que metade do valor protegido">CONFERIR FIPE</span>' : ''}
         ${rs ? '<span class="chip ok">REMARKETING REALIZADO</span>' : sent ? '<span class="chip ok">ENVIADO</span>' : ''}
+        ${dy ? '<span class="chip warnc">NO REMARKETING DINÂMICO</span>' : ''}
       </div>
       <p class="veh">${veh}</p>
       <p class="mot"><b>Motivo do cancelamento:</b> ${esc(motivoDe(r))}</p>
@@ -1512,6 +1612,7 @@ function card(r) {
       <div class="row2"><span>1º boleto c/ 50%</span><b>${brl(r.m50)}</b></div>
       ${diff}
     </div>
+    ${dy ? `<p class="dynbox"><span><b>Está no Remarketing dinâmico</b> como ${esc(dynSit(dy))}${dy.pl ? ' · ' + esc(dy.pl) : ''}${dy.esp ? ' · especialista ' + esc(dy.esp) : ''}. Confira lá antes de chamar, para não mandar duas mensagens para a mesma pessoa.</span><button type="button" class="btn sm" data-goc="${esc(dy.pl || dy.n)}">Ver no Remarketing dinâmico</button></p>` : ''}
     ${rs ? rsBox(rs) : `<div class="actions">
       ${r.wa ? `<a class="btn wa" href="${waLink(r)}" target="_blank" rel="noopener">Abrir WhatsApp</a>` : `<span class="btn wa off">Sem celular válido</span>`}
       <button class="btn mark" type="button" data-act="mark">${sent ? 'Enviado ✓' : 'Marcar como enviado'}</button>
@@ -1537,7 +1638,7 @@ function render() {
   if (!rows.length) {
     // não está na lista do remarketing: procura nos cancelados recentes (aba Evolução da base)
     const q = norm($('q').value.trim()), qp = q.replace(/[^a-z0-9]/g, '');
-    const cx = q && typeof E !== 'undefined' && E.data && E.data.canc ? E.data.canc.filter(r => (!E.team || r.t === E.team || r.lt === E.team) && (norm(r.n).includes(q) || (qp.length >= 3 && norm(r.pl).replace(/[^a-z0-9]/g, '').includes(qp)))) : [];
+    const cx = q && typeof E !== 'undefined' && E.data && E.data.canc ? E.data.canc.filter(r => !r.st && (!E.team || r.t === E.team || r.lt === E.team) && (norm(r.n).includes(q) || (qp.length >= 3 && norm(r.pl).replace(/[^a-z0-9]/g, '').includes(qp)))) : [];
     list.innerHTML = '<p class="empty">Nenhum contato com esses filtros.</p>' + (cx.length ? `<div class="cx mid" style="grid-template-columns:1fr"><div><h3>${cx.length === 1 ? esc(cx[0].n) + ' está' : nf(cx.length) + ' associados com essa busca estão'} em <b>Cancelados recentes</b></h3>
       <p class="mot">Quem cancelou no mês passado ou neste mês não fica na lista do remarketing: fica em Cancelados recentes, na aba Evolução da base, com a mensagem e o botão do WhatsApp.</p>
       <div class="actions" style="margin-top:10px">${cx.slice(0, 5).map(r => `<button type="button" class="btn" data-goc="${esc(r.pl || r.n)}">Ver ${esc(r.n)}${r.pl ? ' · ' + esc(r.pl) : ''}</button>`).join('')}</div></div></div>` : '');
