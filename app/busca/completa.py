@@ -26,6 +26,7 @@ from ..fontes.powercrm import ClientePowerCRM, PowerCRMErro
 from ..fontes.sga import ClienteSGA, SGABloqueado, SGAErro
 from ..tempo import agora, formatar, utc
 from .entrada import Entrada, ErroBusca, Saida
+from ..creditos import atualizar_creditos
 from .liderado import aplicar as aplicar_liderados
 
 log = logging.getLogger("escritorio")
@@ -94,7 +95,7 @@ def montar_entrada(db: Session, *, sga, powercrm, http_bi, momento: datetime | N
         listas={e["nome"]: ler(db, "rm:" + N(e["nome"])) or [] for e in especialistas},
         comp_marks={d["id"]: d["data"] for d in bp.listar(db, "comp")},
         comp_registro=ler(db, "comp_registro") or [],
-        creditos_fixados=ler(db, "creditos_fixados") or [],  # creditos_fixados.json do Kit (importação do sistema atual)
+        creditos_fixados=ler(db, "creditos_fixados") or [],  # aba CRÉDITOS FIXADOS (app/creditos.py; antes, a importação)
         plt_cond=ler(db, "plt_cond") or [],  # PLT_COND do script (plantão por condição), sem nomes no código
         sga=sga, powercrm=powercrm, http_bi=http_bi,
         log=log_ or (lambda *a: log.info("busca: %s", " ".join(str(x) for x in a))),
@@ -157,6 +158,8 @@ def busca_completa(Sessao, cfg: Config, *, tipo: str = "agendada", pessoa_id: in
             else:
                 sga, powercrm, http_bi = clientes
             try:
+                if clientes is None:  # créditos fixados do Inside Sales: lidos da planilha antes de cada busca
+                    atualizar_creditos(db, cfg)
                 if rodar is None:
                     from .retorno import rodar  # o script adaptado (pesado): só carrega quando a busca roda
                 entrada = montar_entrada(db, sga=sga, powercrm=powercrm, http_bi=http_bi)
