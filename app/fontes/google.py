@@ -20,6 +20,7 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 DRIVE = "https://www.googleapis.com/drive/v3"
 SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
 ESCOPOS = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/spreadsheets.readonly"
+LIMITE_DOWNLOAD = 20 * 1024 * 1024  # 20 MB: um print tem poucas centenas de KB
 
 
 class GoogleErro(RuntimeError):
@@ -83,6 +84,9 @@ class ClienteGoogle:
         return self._token
 
     def _get(self, url: str, params: dict | None = None, o_que: str = "a consulta") -> dict:
+        return self._pedir(url, params, o_que).json()
+
+    def _pedir(self, url: str, params: dict | None, o_que: str) -> httpx2.Response:
         try:
             r = self.http.get(url, params=params, headers={"Authorization": "Bearer " + self.token()})
         except httpx2.HTTPError as e:
@@ -96,7 +100,7 @@ class ClienteGoogle:
             raise GoogleErro(f"{o_que}: sem permissão. Compartilhe com {self.email}")
         if not r.is_success:
             raise GoogleErro(f"{o_que}: o Google respondeu com erro (código {r.status_code})")
-        return r.json()
+        return r
 
     # ------------------------------------------------------------ Drive e Planilhas (só leitura)
 
@@ -119,6 +123,14 @@ class ClienteGoogle:
             if not pagina:
                 break
         return saida[:limite]
+
+    def baixar(self, arquivo_id: str, limite: int = LIMITE_DOWNLOAD) -> bytes:
+        """O conteúdo de um arquivo do Drive (alt=media; o escopo drive.readonly permite). Só leitura."""
+        r = self._pedir(f"{DRIVE}/files/{arquivo_id}", {"alt": "media", "supportsAllDrives": "true"},
+                        "o arquivo do Drive")
+        if len(r.content) > limite:
+            raise GoogleErro("o arquivo do Drive é grande demais para mostrar")
+        return r.content
 
     def planilha(self, planilha_id: str) -> dict:
         return self._get(f"{SHEETS}/{planilha_id}", {"fields": "properties.title,sheets.properties.title"},

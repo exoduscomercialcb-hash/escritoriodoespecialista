@@ -7,15 +7,17 @@ from urllib.parse import quote
 
 from authlib.integrations.starlette_client import OAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from . import banco_pagina as bp
+from . import prints
 from .dados import ler as ler_pacote
 from .dados import pacote_da_pessoa
 from .db import Pessoa
 from .dependencias import banco, config, exige_json, exige_pessoa, ip_do_cliente, pessoa_logada
+from .fontes.google import GoogleErro
 from .servicos import (MSG_NAO_LIBERADO, achar_pessoa, concluir_login, lista_de_equipes, pessoa_para_json,
                        pode_ver_painel, primeiro_acesso, registrar_acesso)
 
@@ -189,7 +191,10 @@ def dados(request: Request, db: Session = Depends(banco), p: Pessoa = Depends(ex
 
 @rotas.get("/api/banco/{colecao}")
 def banco_listar(colecao: str, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
-    return {"docs": bp.listar(db, colecao)}
+    docs = bp.listar(db, colecao)
+    if colecao == "reativ":  # prints de reativação: cada um só recebe os que pode ver (app/prints.py)
+        docs = prints.filtrar_reativ(db, p, docs)
+    return {"docs": docs}
 
 
 @rotas.post("/api/banco/{colecao}", dependencies=[Depends(exige_json)])
@@ -201,7 +206,24 @@ async def banco_adicionar(colecao: str, request: Request, db: Session = Depends(
 @rotas.get("/api/banco/{colecao}/{doc_id}")
 def banco_ler(colecao: str, doc_id: str, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
     dados = bp.ler(db, colecao, doc_id)
+    if colecao == "reativ" and dados is not None and doc_id != str(p.id):  # o documento da própria pessoa vem inteiro
+        dados = prints.filtrar_documento(prints.nomes_visiveis(db, p), dados)
     return {"exists": dados is not None, "data": dados}
+
+
+@rotas.get("/api/print/{drive_id}")
+def print_de_reativacao(drive_id: str, request: Request, db: Session = Depends(banco),
+                        p: Pessoa = Depends(exige_pessoa)):
+    """A imagem de um print de reativação, baixada do Drive pela conta de serviço. Quem não pode ver recebe 404,
+    igual a um id que não existe; só vale id de print da pasta dos prints que está num registro da reativ."""
+    tipo = prints.imagem_que_pode_ver(db, p, drive_id)
+    if tipo is None:
+        raise HTTPException(404, "Print não encontrado.")
+    try:
+        conteudo = prints.baixar(request.app.state, config(request), drive_id)
+    except GoogleErro:
+        raise HTTPException(502, "Não foi possível buscar o print no Google Drive agora. Tente de novo.") from None
+    return Response(conteudo, media_type=tipo, headers={"Cache-Control": "private, max-age=86400"})
 
 
 @rotas.put("/api/banco/{colecao}/{doc_id}", dependencies=[Depends(exige_json)])

@@ -105,7 +105,9 @@ def test_banco_de_marcacoes(admin, novo_cliente, db):
     # atualização junta objetos dentro de objetos (prints da reativação: {"p": {chave: print}})
     esp.put("/api/banco/reativ/lider1", json={"p": {"a": {"n": 1}}, "x": 1})
     esp.patch("/api/banco/reativ/lider1", json={"p": {"b": {"n": 2}}})
-    assert esp.get("/api/banco/reativ/lider1").json()["data"] == {"p": {"a": {"n": 1}, "b": {"n": 2}}, "x": 1}
+    assert admin.get("/api/banco/reativ/lider1").json()["data"] == {"p": {"a": {"n": 1}, "b": {"n": 2}}, "x": 1}
+    # reativ: quem não é da gestão só recebe os prints que pode ver (nenhum destes tem esp; ver tests/test_prints.py)
+    assert esp.get("/api/banco/reativ/lider1").json()["data"] == {"p": {}}
     # "comp" (baixas): só administrador, coordenação e financeiro gravam; todos leem
     r = esp.put("/api/banco/comp/2026-11", json={"ABC1D23": {"b": 1}})
     assert r.status_code == 400 and "coordenação e o financeiro" in r.json()["erro"]

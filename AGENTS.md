@@ -20,6 +20,10 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   hora em hora como no sistema atual, e botão "Ler comprovantes agora" no Painel > Atualizações.
 - **25/11 (branch `botoes-google`):** botões "Anexar comprovante" e "Enviar prints" (Apps Script) com os tokens que vêm
   prontos pela importação (`tokens_gas`, nunca as chaves); cada pessoa recebe só os seus em `/api/dados` (campo `gas`).
+- **25/11 (branch `prints-reativacao`):** prints de reativação lidos do Drive (`app/prints.py`), nos horários dos
+  comprovantes e pelo botão "Ler prints agora": imagem antiga (subpasta, nome = id do asset) liga ao registro da `reativ`,
+  print novo do Apps Script vira registro em `reativ/drive-<mês>`; a imagem abre por `/api/print/<id>` só para quem pode
+  ver (gestão: todos; líder: as equipes dele; especialista: os dele), e a lista da `reativ` vem filtrada do mesmo jeito.
 - **Falta para a virada:** publicar a leitura dos comprovantes (conta de serviço `escritorio-leitura@…` criada em 25/11), e-mails
   de cancelados pelo servidor, acesso próprio do SGA e a exportação final do sistema atual.
 - **09/11:** cópias do sistema atual atualizadas (eram de 07/11): regra da adesão do liderado no nome do líder
@@ -121,6 +125,7 @@ como P0/P1 só o que expõe dado ou acesso de verdade; estilo e preferência, no
 | `app/banco_pagina.py` | Banco de marcações (enviados, comp, compconf, reativ, cancenv) e quem pode gravar em cada coleção. |
 | `app/atualizacoes.py`, `app/fontes/` | Clientes do SGA, do Power CRM e do Google (Drive e Planilhas pela conta de serviço `escritorio-leitura@escritorio-do-especialista.iam.gserviceaccount.com`), todos somente leitura; trava do SGA, registro das buscas, teste de conexão. Ids das pastas e da planilha ficam no Render (`DRIVE_PASTA_COMPROVANTES`, `DRIVE_PASTA_REATIVACAO`, `PLANILHA_INSIDE_SALES`), não no repositório. |
 | `app/comprovantes.py` | Comprovantes de adesão lidos do Drive (descrição JSON de cada arquivo da pasta dos comprovantes), registro `comp_registro` (valor lido e conferência da `compconf`) e `cp`/`mk` nas adesões de `all`, `t:*` e `e:*` (porta do `pix.py`). Roda aos :25, das 7h às 15h e das 17h às 22h, e pelo botão "Ler comprovantes agora"; nunca com a busca completa rodando. |
+| `app/prints.py` | Prints de reativação lidos do Drive (pasta `DRIVE_PASTA_REATIVACAO` e subpastas): liga as imagens antigas aos registros da `reativ`, cria os registros dos prints novos (`reativ/drive-<mês>`), índice do servidor `prints_drive`, a regra de quem vê cada print (`/api/print/<id>` e a lista da `reativ`). Roda logo depois dos comprovantes, nos mesmos horários; nunca com a busca completa rodando. |
 | `app/busca/` | A busca completa. `retorno.py` é o script do sistema atual adaptado (regras intactas; só a entrada e a saída mudaram, ver `entrada.py`). `completa.py` monta a entrada a partir do banco, roda, aplica a regra do liderado (`liderado.py`, porta do `liderado_pc.py`), grava os pacotes e agenda (06:00 e 16:00; `BUSCA_AUTOMATICA=0` desliga). |
 | `tests/` | Testes de API, Postgres de verdade (`test_postgres.py`) e navegador (`test_interface.py`). |
 
