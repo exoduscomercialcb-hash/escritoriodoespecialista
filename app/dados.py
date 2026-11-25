@@ -71,7 +71,8 @@ def importar_sistema_atual(db: Session, exp) -> dict:
                                     "eqs": x.get("eqs") or [], "carteira": x.get("carteira"), "rot": x.get("rot") or "",
                                     "ld": x.get("ld")}, "importacao")
         guardar(db, "rm:" + nome, rows, "importacao")
-    for bloco in ("motivos", "rtcfg", "comp_registro"):
+    # creditos_fixados e plt_cond (24/11): o creditos_fixados.json do Kit e a lista PLT_COND do script (app/busca/entrada.py)
+    for bloco in ("motivos", "rtcfg", "comp_registro", "creditos_fixados", "plt_cond"):
         if exp.get(bloco) is not None:
             guardar(db, bloco, exp[bloco], "importacao")
     marcacoes = importar_colecoes(db, exp.get("banco") or {})
