@@ -26,6 +26,7 @@ from ..fontes.powercrm import ClientePowerCRM, PowerCRMErro
 from ..fontes.sga import ClienteSGA, SGABloqueado, SGAErro
 from ..tempo import agora, formatar, utc
 from .entrada import Entrada, ErroBusca, Saida
+from ..avisos import enviar_cancelados
 from ..creditos import atualizar_creditos
 from .liderado import aplicar as aplicar_liderados
 
@@ -168,6 +169,8 @@ def busca_completa(Sessao, cfg: Config, *, tipo: str = "agendada", pessoa_id: in
                 lid = aplicar_liderados(saida.pacotes or {}, saida.cotacoes, entrada.old, entrada.especialistas)
                 log.info("busca: liderados %s", lid)
                 gravados = gravar_saida(db, saida, inicio)
+                if clientes is None:  # e-mails dos cancelados novos (app/avisos.py; não levanta erro; modo em EMAILS_CANCELADOS)
+                    enviar_cancelados(db, cfg, saida.novos_cancelados or {})
                 tardio = (saida.resumo or {}).get("sga_bloqueado_no_fim")
                 if tardio:  # gravou o que leu, mas o SGA bloqueou no trecho final: não chama mais até o próximo horário
                     ate = proximo_horario_sga()
