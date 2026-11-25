@@ -56,6 +56,7 @@ for q in COT.values():
     for k_ in (pl_(q.get("vehiclePlates")), pl_(q.get("vehicleChassi"))):
         if k_: AF[k_] = af
 log("Power CRM:", len(COT), "cotações,", len(AF), "vendas com afiliado")
+if len(COT) < 100: raise SystemExit("Power CRM não respondeu (só %d cotações) — página não alterada" % len(COT))   # 16/11: erro 500 do Power CRM
 
 def nome_lid(af, t, o):
     """Nome do liderado: o do SGA/cadastro da mesma equipe quando o 1º (e o 2º, se houver) nome batem; senão o do Power CRM."""

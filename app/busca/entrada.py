@@ -27,6 +27,14 @@ class Entrada:
     powercrm: Any | None  # app.fontes.powercrm.ClientePowerCRM: .pagina(de, ate, numero); None se não houver token
     http_bi: Any  # httpx2.Client para o BI Brasil Atuarial (relatório público)
     log: Callable[..., None] = print
+    # Arquivos novos do Kit (24/11). Vazio = arquivo ausente no Kit (o script segue sem a regra, como lá).
+    # creditos_fixados.json (19/11): aba "CRÉDITOS FIXADOS" da planilha Ativação Inside Sales. Cada item:
+    #   {"cv": código do veículo, "placa": ..., "nome": associado, "resp": vendedora interna, "comp": "AAAA-MM" (opcional)};
+    #   basta um de cv/placa/nome. A adesão fica com o especialista do SGA e também conta para a vendedora (campos vf/vfm).
+    creditos_fixados: list = field(default_factory=list)
+    # plantão por condição (14/11), o PLT_COND do script, que lá está escrito no código (com nomes de associado, que não
+    # entram no repositório): [{"t": "MAGNATAS", "min": 25, "desde": "2026-10", "nomes": ["<começo do nome>", ...]}].
+    plt_cond: list = field(default_factory=list)
 
 
 @dataclass

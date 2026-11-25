@@ -94,6 +94,8 @@ def montar_entrada(db: Session, *, sga, powercrm, http_bi, momento: datetime | N
         listas={e["nome"]: ler(db, "rm:" + N(e["nome"])) or [] for e in especialistas},
         comp_marks={d["id"]: d["data"] for d in bp.listar(db, "comp")},
         comp_registro=ler(db, "comp_registro") or [],
+        creditos_fixados=ler(db, "creditos_fixados") or [],  # creditos_fixados.json do Kit (importação do sistema atual)
+        plt_cond=ler(db, "plt_cond") or [],  # PLT_COND do script (plantão por condição), sem nomes no código
         sga=sga, powercrm=powercrm, http_bi=http_bi,
         log=log_ or (lambda *a: log.info("busca: %s", " ".join(str(x) for x in a))),
     )

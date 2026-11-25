@@ -12,10 +12,12 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   administrador (Cadastros, Acessos, Atualizações).
 - **Etapa 2, parte 1** no ar: trava do SGA, registro das buscas e teste de conexão. **Teste de 08/11, 02:33: SGA e
   Power CRM conectaram.**
-- **Cards (partes 2.2, 3.1 e 3.2)** no ar em `/escritorio`, ainda **sem dados**: falta o Rafael pedir a exportação ao
-  Claude que tem o Kit e importar em Painel > Atualizações > Dados do sistema atual.
-- **Parte 2.3 (busca automática)** pronta no PR da branch `etapa-2-busca`, esperando a aprovação do Rafael. Depois de
-  aprovada, roda sozinha às 06:00 e às 16:00 (só se os dados do sistema atual já tiverem sido importados) e pelo botão do painel.
+- **Cards e busca automática** no ar: dados importados em 09/11; a busca roda sozinha às 06:00 e às 16:00 (PRs #5 a #9).
+- **25/11 (branch `paridade-2411`):** script e página iguais ao sistema atual de 24/11 (inadimplente/inativo/retirada,
+  Inside Sales, Cadastro com 2 telas, plantão por condição, reativação pelo boleto, Power CRM < 100, gravação de novembro).
+  Plantão por condição e créditos fixados vêm do banco (`plt_cond`, `creditos_fixados`, pela importação), porque têm nomes.
+- **Falta para a virada:** comprovantes lidos do Drive (conta de serviço `escritorio-leitura@…` criada em 25/11), e-mails
+  de cancelados pelo servidor, acesso próprio do SGA e a exportação final do sistema atual.
 - **09/11:** cópias do sistema atual atualizadas (eram de 07/11): regra da adesão do liderado no nome do líder
   (`app/busca/liderado.py`), plantão sem placa (chassi ou nome) e séries sempre com `base[]`. A busca automática
   roda com elas.
@@ -171,6 +173,7 @@ Erros do sistema atual (artefato no Claude): `docs/MANUAL_SISTEMA_ATUAL.md`, se�
 | 10/11 | 1ª busca automática (03:52) parou com "o SGA respondeu BLOQUEADO em listar" e pausou o SGA no sistema novo, sem gravar nada | Alarme falso: a lista de status de atendimento do SGA (resposta boa, código 200) tem um status chamado "Bloqueado", e o cliente procurava a palavra em qualquer resposta | Só conta como bloqueio a palavra numa resposta de erro (ou no login sem token) | `test_palavra_bloqueado_nos_dados_nao_e_bloqueio` |
 | 10/11 | Busca manual das 08:45 parou de novo no mesmo ponto ("BLOQUEADO em listar"), já com a correção anterior | O SGA recusa só a consulta `/listar/status-atendimento/todos` com uma resposta de erro que diz "bloqueado"; o login e as outras consultas funcionam (o script original ignora essa consulta) | Antes de pausar, o cliente confere com um login novo: login recusado = bloqueio de verdade (pausa); login aceito = só aquela consulta recusada (`SGAErro`, a busca segue) | `test_consulta_recusada_com_login_aceito_nao_pausa` |
 | 10/11 | Busca das 08:55 recusada já no login ("BLOQUEADO no login"): bloqueio de verdade por excesso, não alarme falso | As 3 buscas de 10/11 (03:52, 08:45, 08:55), somadas às do sistema atual no mesmo acesso, estouraram o limite; o limite aparecia sempre no trecho final. O script antigo engolia a falha nesse trecho e publicava; o novo jogava a busca fora. O cliente novo também reaproveita a conexão e consulta mais rápido que o antigo | Trecho final: grava o que leu, para de chamar o SGA e pausa. 0,4 s entre chamadas. O registro mostra quantas chamadas cada busca fez. **Não tirar a pausa logo depois de um bloqueio** | `test_bloqueio_no_trecho_final_termina_sem_insistir_e_mantem_as_instalacoes`, `test_intervalo_entre_chamadas_ao_sga` |
+| 25/11 | (pego antes de publicar) A busca de 20 em 20 s da página redesenharia a lista de comprovantes e tiraria o foco de quem digita o valor pago | O `onSnapshot` do `claude_banco.js` avisava a página a cada busca, mesmo sem mudança | Só avisa quando o documento muda e ignora respostas mais velhas | `test_banco_da_pagina_so_avisa_quando_o_documento_muda` |
 
 ### Armadilhas de configuração (não são erros do código)
 

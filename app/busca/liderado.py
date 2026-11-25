@@ -10,6 +10,8 @@ Roda depois do script adaptado (app/busca/retorno.py), sobre os pacotes que ele 
 - o pacote do próprio liderado ("e:<NOME>") recebe as adesões movidas e a série "ALL|equipe";
 - toda série fica com `base[]` (série sem base travou o painel dos líderes em 09/11).
 O total da equipe não muda. Vale a partir de set/26.
+Com menos de 100 cotações do Power CRM (16/11: erro 500 que devolveu 0 cotações), para sem gravar nada (ErroBusca), como o
+script atual ("página não alterada"). O script adaptado já para antes, com a mesma conta; aqui fica a mesma trava.
 
 De onde vem o liderado: das cotações do Power CRM que o script já leu (venda concretizada, não arquivada, `nameAffiliate`).
 Se o Power CRM falhou nesta busca, vale o que a busca anterior já tinha movido (`esp_sga` no pacote "all" anterior), para a
@@ -21,6 +23,7 @@ import re
 from typing import Any
 
 from ..dados import N
+from .entrada import ErroBusca
 
 DESDE = "2026-09"
 PART = {"DE", "DA", "DO", "DOS", "DAS", "E", "DI", "DU"}
@@ -149,6 +152,8 @@ def _roda(o: dict, af: dict, antes: dict, especialistas: list[dict], movidas: li
 def aplicar(pacotes: dict[str, Any], cotacoes: list | None, old: dict | None, especialistas: list[dict]) -> dict:
     """Aplica a regra nos pacotes (altera no lugar). Devolve um resumo só com números."""
     especialistas = [e for e in especialistas or [] if isinstance(e, dict) and e.get("nome")]
+    if cotacoes is not None and len(cotacoes) < 100:  # 16/11: erro 500 do Power CRM (None = Power CRM falhou: vale a busca anterior)
+        raise ErroBusca("Power CRM não respondeu (só %d cotações) — nada foi publicado; tente mais tarde" % len(cotacoes))
     af = afiliados(cotacoes)
     antes = movidas_antes(old)
     st = {"movidas": 0, "base_corrigida": 0, "no_pacote_do_liderado": 0,

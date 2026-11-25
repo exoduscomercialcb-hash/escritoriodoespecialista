@@ -57,6 +57,7 @@ def test_busca_grava_os_pacotes_e_entrega_a_entrada_certa(app, db):
     assert e.old["base"] == 1 and e.especialistas[0]["id"] == 7
     assert e.listas == {"Fulano Inventado": [{"placa": "ABC1D23"}]}
     assert e.comp_marks == {"regras": {"ABC1D23": {"val": True}}} and e.comp_registro == [{"placa": "ABC1D23"}]
+    assert e.creditos_fixados == [] and e.plt_cond == []  # pacotes ainda não importados: a regra fica de fora, como no Kit
     assert e.agora.utcoffset() == timedelta(hours=-3)
     db.expire_all()
     assert ler(db, "all") == {"meses_base": ["2026-11"]} and ler(db, "t:ELITE") == {"novo": 1}
@@ -174,3 +175,14 @@ def test_bloqueio_no_fim_grava_e_pausa(app, db):
     assert r["ok"] is True and "bloqueou no fim" in r["mensagem"] and "pausado até" in r["mensagem"]
     db.expire_all()
     assert ler(db, "all") == {"m": 1} and atu.trava_ativa(db, atu.TRAVA_SGA) is not None
+
+
+def test_creditos_fixados_e_plantao_por_condicao_vem_da_importacao(admin, app, db):
+    """24/11: creditos_fixados.json do Kit e a lista do plantão por condição chegam à busca pela importação."""
+    from .test_dados import EXPORTACAO
+    exp = dict(EXPORTACAO, creditos_fixados=[{"placa": "ABC1D23", "resp": "Vendedora Inventada"}],
+               plt_cond=[{"t": "MAGNATAS", "min": 25, "desde": "2026-10", "nomes": ["ASSOCIADO INVENTADO"]}])
+    assert admin.post("/api/admin/importar-sistema-atual", json=exp).status_code == 200
+    db.expire_all()
+    e = bc.montar_entrada(db, sga=None, powercrm=None, http_bi=None)
+    assert e.creditos_fixados == exp["creditos_fixados"] and e.plt_cond == exp["plt_cond"]

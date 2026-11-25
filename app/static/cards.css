@@ -368,6 +368,40 @@ details.more summary { cursor: pointer; color: var(--accent); font-weight: 600; 
 .resg-ok b { display: block; font-size: 16px; font-weight: 800; }
 .resg-ok span { display: block; font-size: 14px; opacity: .92; margin-top: 2px; }
 .canc-sum .rs { background: var(--gain-dk); color: #fff; }
+/* inad-inat 16/11 */ /* inad-inat cores v2 */
+.cx.inat { background: #3B4048; border-color: #2B2F35; color: #fff; }
+.cx.inat h3, .cx.inat .veh, .cx.inat .row2, .cx.inat .row2 b, .cx.inat .mot, .cx.inat .mot b, .cx.inat .mot span, .cx.inat .meta, .cx.inat .meta span, .cx.inat .basebox, .cx.inat .basebox b { color: #fff; }
+.cx.inat .facts { border-left-color: rgba(255,255,255,.3); }
+.cx.inat .basebox { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.25); }
+.cx.inat .chip { background: #fff; color: #2B2F35; }
+.cx.inad { background: #D9DCE1; border-color: #B4B9C1; color: #111; font-weight: 700; }
+.cx.inad h3, .cx.inad .veh, .cx.inad .row2, .cx.inad .row2 b, .cx.inad .mot, .cx.inad .mot b, .cx.inad .mot span, .cx.inad .meta, .cx.inad .meta span, .cx.inad .basebox, .cx.inad .basebox b { color: #111; font-weight: 700; }
+.cx.inad .facts { border-left-color: rgba(0,0,0,.2); }
+.cx.inad .basebox { background: rgba(255,255,255,.55); border-color: rgba(0,0,0,.15); }
+.cx.inad .chip { background: #111; color: #fff; }
+@media (max-width: 760px) { .cx.inat .facts { border-top-color: rgba(255,255,255,.3); } .cx.inad .facts { border-top-color: rgba(0,0,0,.2); } }
+.canc-sum .it { background: #3B4048; color: #fff; }
+.canc-sum .ia { background: #D9DCE1; color: #111; }
+.cleg i.it { background: #3B4048; border-color: #2B2F35; color: #fff; }
+.cleg i.ia { background: #D9DCE1; border-color: #B4B9C1; color: #111; }
+#cancSit { flex-wrap: wrap; max-width: 100%; }
+/* retirada 18/11 */
+.cx.ret { background: #B54708; border-color: #8F3806; color: #fff; }
+.cx.ret h3, .cx.ret .veh, .cx.ret .row2, .cx.ret .row2 b, .cx.ret .mot, .cx.ret .mot b, .cx.ret .mot span, .cx.ret .meta, .cx.ret .meta span, .cx.ret .basebox, .cx.ret .basebox b { color: #fff; }
+.cx.ret .facts { border-left-color: rgba(255,255,255,.35); }
+.cx.ret .basebox { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.3); }
+.cx.ret .chip { background: #fff; color: #8F3806; }
+@media (max-width: 760px) { .cx.ret .facts { border-top-color: rgba(255,255,255,.35); } }
+.cx .rrbox { grid-column: 1 / -1; margin: 0; border-radius: 10px; padding: 10px 12px; display: grid; gap: 2px; }
+.cx .rrbox b { font-size: 15px; font-weight: 800; } .cx .rrbox span { font-size: 12.5px; }
+.cx .rrbox.ok { background: #DDF3E6; color: #0B5E36; border: 2px solid #12784A; }
+.cx .rrbox.no { background: #FBE2E0; color: #8E1E18; border: 2px solid #C0392B; }
+.canc-sum .rtq { background: #B54708; color: #fff; }
+.cleg i.rtr { background: #B54708; border-color: #8F3806; color: #fff; }
+/* cadastro 23/11: aviso no Remarketing estático de quem também está no dinâmico */
+.card .dynbox { grid-column: 2 / -1; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: #FFD60A; color: #111; border: 2px solid #E0B000; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.card .dynbox span { flex: 1 1 260px; min-width: 0; } .card .dynbox b { color: #111; } .card .dynbox .btn { background: #fff; color: #142034; border-color: #E0B000; }
+@media (max-width: 760px) { .card .dynbox { grid-column: 1 / -1; } }
 
 /* ===== Sistema novo (Render) ===== */
 /* regra que ficava no esqueleto da página publicada no Claude: escondido é escondido, mesmo com display definido */
