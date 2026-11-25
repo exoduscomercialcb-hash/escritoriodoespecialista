@@ -302,6 +302,7 @@
     try { r = await api('/api/admin/atualizacoes'); } catch (e) { toast(e.message); return; }
     $('atuBuscar').hidden = EU.pessoa.tipo !== 'admin';
     $('atuComprovantes').hidden = EU.pessoa.tipo !== 'admin';
+    $('atuPrints').hidden = EU.pessoa.tipo !== 'admin';
     const pausa = $('atuPausa');
     $('atuPausaBox').hidden = !r.sga_pausado;
     $('atuRetirarPausa').hidden = EU.pessoa.tipo !== 'admin';
@@ -309,6 +310,7 @@
     $('atuProxima').textContent = r.busca_automatica ? 'Próxima busca completa do SGA: ' + r.proxima_busca_sga_txt + '.'
       : 'Busca automática desligada neste servidor (só roda pelo botão).';
     if (r.comprovantes_automatico) $('atuProxima').textContent += ' Comprovantes do Drive: de hora em hora, aos :25 (7h às 15h e 17h às 22h).';
+    if (r.prints_automatico) $('atuProxima').textContent += ' Prints de reativação do Drive: nos mesmos horários, logo depois dos comprovantes.';
     $('atuFontes').replaceChildren(...r.fontes.map(f => h('div', { class: 'atu-fonte', 'data-fonte': f.fonte },
       h('b', {}, f.nome),
       h('span', { class: f.ultimo_ok_txt ? 'chip ok' : 'chip' }, f.ultimo_ok_txt ? 'Último sucesso: ' + f.ultimo_ok_txt + (f.ultimo_ok_tipo === 'teste' ? ' (teste)' : '') : 'Ainda sem busca'),
@@ -379,6 +381,16 @@
     const b = $('atuComprovantes'); b.disabled = true; $('atuResultado').replaceChildren(h('p', { class: 'hint' }, 'Lendo os comprovantes do Drive…'));
     try {
       const r = await api('/api/admin/atualizacoes/comprovantes', { corpo: {} });
+      $('atuResultado').replaceChildren(h('p', { class: r.ok ? 'ok-msg' : 'err' }, r.mensagem));
+      carregarAtualizacoes();
+    } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
+    b.disabled = false;
+  });
+
+  $('atuPrints').addEventListener('click', async () => {
+    const b = $('atuPrints'); b.disabled = true; $('atuResultado').replaceChildren(h('p', { class: 'hint' }, 'Lendo os prints de reativação do Drive…'));
+    try {
+      const r = await api('/api/admin/atualizacoes/prints', { corpo: {} });
       $('atuResultado').replaceChildren(h('p', { class: r.ok ? 'ok-msg' : 'err' }, r.mensagem));
       carregarAtualizacoes();
     } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }

@@ -31,8 +31,14 @@ def _conferir(colecao: str, doc_id: str | None = None) -> None:
         raise ErroRegra("Identificador de documento inválido.")
 
 
-def pode_gravar(p: Pessoa, colecao: str) -> bool:
-    return colecao not in SO_GESTAO or p.tipo in GESTAO
+def pode_gravar(p: Pessoa, colecao: str, doc_id: str | None = None) -> bool:
+    """reativ: a gestão grava em todos; os demais só no próprio documento (reativ/<id do cadastro>), como no sistema
+    atual (regra "reativ/{self}"). Assim ninguém apaga nem altera os prints e a conferência de outra pessoa."""
+    if p.tipo in GESTAO:
+        return True
+    if colecao == "reativ":
+        return doc_id is not None and doc_id == str(p.id)
+    return colecao not in SO_GESTAO
 
 
 def listar(db: Session, colecao: str, limite: int = 2000) -> list[dict]:
@@ -56,14 +62,15 @@ def _gravar(db: Session, colecao: str, doc_id: str, dados: dict, quem: Pessoa | 
     db.commit()
 
 
-def _exigir_gravacao(quem: Pessoa, colecao: str) -> None:
-    if not pode_gravar(quem, colecao):
-        raise ErroRegra("Só a coordenação e o financeiro gravam aqui.")
+def _exigir_gravacao(quem: Pessoa, colecao: str, doc_id: str | None = None) -> None:
+    if not pode_gravar(quem, colecao, doc_id):
+        raise ErroRegra("Só a coordenação e o financeiro gravam aqui." if colecao != "reativ"
+                        else "Você só pode gravar os seus próprios prints.")
 
 
 def definir(db: Session, colecao: str, doc_id: str, dados, quem: Pessoa) -> None:
     _conferir(colecao, doc_id)
-    _exigir_gravacao(quem, colecao)
+    _exigir_gravacao(quem, colecao, doc_id)
     if not isinstance(dados, dict):
         raise ErroRegra("O documento precisa ser um objeto.")
     _gravar(db, colecao, doc_id, dados, quem)
@@ -80,7 +87,7 @@ def _juntar(base: dict, novo: dict) -> dict:
 def atualizar(db: Session, colecao: str, doc_id: str, dados, quem: Pessoa) -> bool:
     """Devolve False se o documento não existe (a página então usa definir)."""
     _conferir(colecao, doc_id)
-    _exigir_gravacao(quem, colecao)
+    _exigir_gravacao(quem, colecao, doc_id)
     if not isinstance(dados, dict):
         raise ErroRegra("A atualização precisa ser um objeto.")
     atual = ler(db, colecao, doc_id)
@@ -92,7 +99,7 @@ def atualizar(db: Session, colecao: str, doc_id: str, dados, quem: Pessoa) -> bo
 
 def apagar(db: Session, colecao: str, doc_id: str, quem: Pessoa) -> None:
     _conferir(colecao, doc_id)
-    _exigir_gravacao(quem, colecao)
+    _exigir_gravacao(quem, colecao, doc_id)
     db.execute(delete(Documento).where(Documento.colecao == colecao, Documento.doc_id == doc_id))
     db.commit()
 

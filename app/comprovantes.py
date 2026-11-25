@@ -328,25 +328,33 @@ def ultimo_horario_comprovantes(ate: datetime | None = None) -> datetime:
     raise RuntimeError("sem horário dos comprovantes")  # pragma: no cover
 
 
-def leitura_devida(db: Session, momento: datetime | None = None) -> bool:
-    """Roda se passou um horário há menos de 50 minutos e nenhuma leitura começou depois dele."""
+def leitura_devida(db: Session, momento: datetime | None = None, tipo: str = "comprovantes") -> bool:
+    """Roda se passou um horário há menos de 50 minutos e nenhuma leitura (do `tipo`) começou depois dele.
+    tipo "prints": a leitura dos prints de reativação (app/prints.py), nos mesmos horários."""
     momento = momento or agora()
     horario = ultimo_horario_comprovantes(momento)
     if momento - horario > JANELA_DO_AGENDADOR:
         return False
-    feita = db.scalars(select(Atualizacao).where(Atualizacao.fonte == "drive", Atualizacao.tipo == "comprovantes")
+    feita = db.scalars(select(Atualizacao).where(Atualizacao.fonte == "drive", Atualizacao.tipo == tipo)
                        .order_by(Atualizacao.inicio.desc())).first()
     return feita is None or utc(feita.inicio) < horario
 
 
 def agendador_comprovantes(Sessao, cfg: Config, parar: threading.Event) -> None:
-    """Confere a cada minuto se chegou um horário da leitura. Com a busca rodando, tenta de novo no minuto seguinte.
+    """Confere a cada minuto se chegou um horário da leitura: primeiro os comprovantes, logo depois os prints de
+    reativação (cada um só se a pasta dele está no Render). Com a busca rodando, tenta de novo no minuto seguinte.
     Nunca derruba o servidor."""
+    from .prints import atualizar_prints  # aqui dentro: app/prints.py usa funções deste arquivo
+    tarefas = [(tipo, ler_) for tipo, pasta, ler_ in (("comprovantes", cfg.drive_pasta_comprovantes,
+                                                          atualizar_comprovantes),
+                                                         ("prints", cfg.drive_pasta_reativacao, atualizar_prints))
+               if pasta]
     while not parar.wait(INTERVALO_DO_AGENDADOR):
-        try:
-            with Sessao() as db:
-                devida = leitura_devida(db)
-            if devida:
-                atualizar_comprovantes(Sessao, cfg)
-        except Exception as e:  # noqa: BLE001
-            log.warning("Agendador dos comprovantes: %s", type(e).__name__)
+        for tipo, ler_ in tarefas:
+            try:
+                with Sessao() as db:
+                    devida = leitura_devida(db, tipo=tipo)
+                if devida:
+                    ler_(Sessao, cfg)
+            except Exception as e:  # noqa: BLE001
+                log.warning("Agendador dos %s: %s", tipo, type(e).__name__)

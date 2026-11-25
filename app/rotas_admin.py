@@ -10,6 +10,7 @@ from .atualizacoes import painel as painel_de_atualizacoes
 from .atualizacoes import retirar_pausa_do_sga, testar_drive, testar_powercrm, testar_sga
 from .busca.completa import motivo_para_nao_rodar, rodar_em_segundo_plano
 from .comprovantes import atualizar_comprovantes
+from .prints import atualizar_prints
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
 from .config import EQUIPES, SITUACOES, TIPOS
 from .dados import importar_sistema_atual, resumo_da_importacao
@@ -141,6 +142,8 @@ def ver_atualizacoes(request: Request, db: Session = Depends(banco)):
     r["busca_automatica"] = cfg.busca_automatica
     r["comprovantes_automatico"] = bool(cfg.busca_automatica and cfg.google_service_account_json
                                         and cfg.drive_pasta_comprovantes)
+    r["prints_automatico"] = bool(cfg.busca_automatica and cfg.google_service_account_json
+                                  and cfg.drive_pasta_reativacao)
     return r
 
 
@@ -171,6 +174,14 @@ def ler_comprovantes_agora(request: Request, quem: Pessoa = Depends(exige_painel
     if quem.tipo != "admin":
         raise HTTPException(403, "Só o administrador lê os comprovantes fora do horário.")
     return atualizar_comprovantes(request.app.state.Sessao, config(request), pessoa_id=quem.id)
+
+
+@rotas_admin.post("/atualizacoes/prints", dependencies=[Depends(exige_json)])
+def ler_prints_agora(request: Request, quem: Pessoa = Depends(exige_painel)):
+    """Lê os prints de reativação do Drive fora do horário (só o administrador). Só o Drive."""
+    if quem.tipo != "admin":
+        raise HTTPException(403, "Só o administrador lê os prints fora do horário.")
+    return atualizar_prints(request.app.state.Sessao, config(request), pessoa_id=quem.id)
 
 
 @rotas_admin.post("/atualizacoes/testar", dependencies=[Depends(exige_json)])

@@ -91,7 +91,8 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
         if cfg.busca_automatica:
             threading.Thread(target=agendador, args=(app.state.Sessao, cfg, parar), daemon=True,
                              name="agendador-da-busca").start()
-        if cfg.busca_automatica and cfg.google_service_account_json and cfg.drive_pasta_comprovantes:
+        if cfg.busca_automatica and cfg.google_service_account_json and (cfg.drive_pasta_comprovantes
+                                                                      or cfg.drive_pasta_reativacao):
             threading.Thread(target=agendador_comprovantes, args=(app.state.Sessao, cfg, parar), daemon=True,
                              name="agendador-dos-comprovantes").start()
         yield

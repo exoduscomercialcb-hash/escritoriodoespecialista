@@ -6,6 +6,7 @@ Se o Playwright não estiver instalado, o teste é pulado; no GitHub Actions ele
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -17,10 +18,13 @@ import pytest
 import uvicorn
 
 from app.dados import guardar
-from app.db import Pessoa
+from app.db import Documento, Pessoa
+from app.fontes.google import ClienteGoogle
 from app.main import criar_app
 
 from .conftest import ADMIN, cfg_teste, cpf_inventado
+from .test_google import CHAVE
+from .test_prints import DriveFalso as DriveFalsoDosPrints
 
 try:
     from playwright.sync_api import expect, sync_playwright
@@ -29,10 +33,12 @@ except ImportError:  # pragma: no cover
 
 
 @contextmanager
-def _subir_servidor(banco, preparar):
+def _subir_servidor(banco, preparar, **estado):
     # Google "configurado" com valores inventados: o teste vê o redirecionamento, mas nada sai da máquina.
     app = criar_app(cfg_teste(database_url=f"sqlite:///{banco}", google_client_id="id-inventado",
                               google_client_secret="segredo-inventado"))
+    for nome, valor in estado.items():  # ex.: google_prints (o Drive simulado da rota /api/print)
+        setattr(app.state, nome, valor)
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         porta = s.getsockname()[1]
@@ -374,6 +380,7 @@ def test_banco_da_pagina_so_avisa_quando_o_documento_muda(servidor_com_dados, na
 
 GAS_INVENTADO = "https://script.google.com/macros/s/INVENTADO/exec"
 TOK_LUA, TOK_ESP, TOK_LIDER = "0a0a0a0a0a0a0a0a", "1b1b1b1b1b1b1b1b", "2c2c2c2c2c2c2c2c"  # inventados
+PRINT_ID = "arquivo-print-novo-01"
 
 
 @pytest.fixture(scope="module")
@@ -397,7 +404,19 @@ def servidor_com_tokens(tmp_path_factory):
                                    ("Sem Token Inventada", "especialista", "Elite")):
             s.add(Pessoa(nome=nome, email=nome.split()[0].lower() + ".tok@exemplo.com.br", tipo=tipo, equipe=equipe,
                          situacao="ativo"))
-    with _subir_servidor(tmp_path_factory.mktemp("banco_tokens") / "teste.db", preparar) as url:
+        # prints de reativação: um do especialista da equipe (já no Drive), um do líder ainda nos assets do sistema
+        # atual e um de outra equipe (o líder não recebe)
+        s.add(Documento(colecao="reativ", doc_id="dono-inventado", dados=json.dumps({"p": {
+            "pa": {"id": "assetinventado01", "url": "/_blob/assetinventado01", "esp": "Lider Inventado",
+                   "mes": "2026-10", "at": 1792497600000},
+            "pb": {"id": "assetinventado02", "url": "/_blob/assetinventado02", "esp": "Sem Token Inventada",
+                   "mes": "2026-10", "at": 1792497600000}}})))
+        s.add(Documento(colecao="reativ", doc_id="drive-2026-11", dados=json.dumps({"p": {"d" + PRINT_ID: {
+            "id": PRINT_ID, "drive": PRINT_ID, "url": "/api/print/" + PRINT_ID, "esp": "Especialista Inventado",
+            "mes": "2026-11", "at": 1794312000000, "assoc": "", "res": "", "conf": "", "nota": ""}}})))
+        guardar(s, "prints_drive", {PRINT_ID: {"mime": "image/png", "esp": ["ESPECIALISTA INVENTADO"]}}, "drive")
+    drive = ClienteGoogle(CHAVE, http=DriveFalsoDosPrints().cliente())
+    with _subir_servidor(tmp_path_factory.mktemp("banco_tokens") / "teste.db", preparar, google_prints=drive) as url:
         yield url
 
 
@@ -450,5 +469,21 @@ def test_lider_envia_print_com_o_token_do_especialista_escolhido(servidor_com_to
     pg.select_option("#rtEsp", "Outro Especialista Inventado")  # sem token: o botão some
     expect(pg.locator("#rtGasBox")).to_be_hidden()
     assert pg.locator("#rtGas").get_attribute("href") is None
+    assert not ao_google and not erros, (ao_google, erros)
+    ctx.close()
+
+
+def test_lider_ve_os_prints_da_equipe_vindos_do_drive(servidor_com_tokens, navegador):
+    ctx, pg, erros, ao_google = _entrar_com_tokens(navegador, servidor_com_tokens, "lider.tok@exemplo.com.br")
+    pg.click('#home [data-go="rt"]')
+    expect(pg.locator("#rtList .rt-item")).to_have_count(2)  # o de outra equipe não vem do servidor
+    expect(pg.locator("#rtListT")).to_have_text("Seus prints enviados (2)")
+    imagem = pg.locator("#rtList img")
+    expect(imagem).to_have_attribute("src", "/api/print/" + PRINT_ID)
+    expect(pg.locator("#rtList a", has=pg.locator("img"))).to_have_attribute("href", "/api/print/" + PRINT_ID)  # abrir
+    imagem.scroll_into_view_if_needed()
+    pg.wait_for_function("() => { const i = document.querySelector('#rtList img'); return i && i.complete && i.naturalWidth === 2; }")
+    expect(pg.locator("#rtList .rt-rm")).to_have_text("Imagem ainda não copiada para o sistema novo. O registro continua valendo.")
+    assert "Sem Token" not in pg.locator("#rtList").inner_html()
     assert not ao_google and not erros, (ao_google, erros)
     ctx.close()
