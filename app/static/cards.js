@@ -644,7 +644,7 @@ function renderVA() {
     const r0 = VB[0], totV = VB.reduce((a, r) => a + r.bon, 0);
     bonStat = VA.mes === 'ano' ? [brl(totV), 'Seu bônus no ano'] : [!r0 ? '—' : r0.hit ? 'Meta batida · ' + brl(r0.bon) : 'Faltam ' + nf(r0.falta), 'Seu bônus (meta ' + nf(meta) + ' validadas)' + (r0 && !r0.val ? ' · parcial' : '')];
   }
-  /* 20/11 (Rafael): coordenação vê o bônus do Inside Sales nominal (Nalva e Camila), também no relatório */
+  /* 20/11 (Rafael): coordenação vê o bônus do Inside Sales por vendedora (nome a nome), também no relatório */
   let IB = [];
   if (!d.vi && d.vib && (!t || norm(t).startsWith('exodus'))) {
     idx.slice().reverse().forEach(i => d.vib.forEach(w => {
