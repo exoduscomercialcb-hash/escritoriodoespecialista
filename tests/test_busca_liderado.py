@@ -6,13 +6,13 @@ import copy
 import pytest
 
 import app.busca.completa as bc
-from app.busca.entrada import Saida
+from app.busca.entrada import ErroBusca, Saida
 from app.busca.liderado import aplicar
 from app.busca.retorno import rodar
 from app.dados import guardar, ler
 
 from .test_busca_completa import CFG, CLIENTES, _importado
-from .test_busca_retorno import entrada, old_minimo
+from .test_busca_retorno import cotacoes_de_enchimento, entrada, old_minimo
 
 AM = ["2026-08", "2026-09", "2026-10"]
 LIDER = "Lider Inventado Lua"
@@ -45,7 +45,8 @@ def cotacoes():
             dict(base, vehiclePlates="", vehicleChassi="CHASSIINVENTADO02", nameAffiliate="Liderado Inventado Silva"),
             dict(base, vehiclePlates="ZZZ1A03", nameAffiliate="Liderado Inventado Silva"),
             dict(base, vehiclePlates="ZZZ1A04", nameAffiliate="Lider Inventado Lua"),
-            dict(base, vehiclePlates="ZZZ1A05", nameAffiliate="Outro Inventado", cardStatus=3)]  # não concretizada
+            dict(base, vehiclePlates="ZZZ1A05", nameAffiliate="Outro Inventado", cardStatus=3),  # não concretizada
+            ] + cotacoes_de_enchimento(100)  # passa da trava das 100 cotações (16/11)
 
 
 ESPS = [{"id": 9, "nome": LIDERADO, "sga": ["LIDERADO INVENTADO SILVA"], "eqs": ["LUA"]}]
@@ -132,3 +133,25 @@ def test_plantao_sem_placa_pelo_chassi_ou_pelo_nome(chave):
     s = rodar(e)
     assert s.pacotes["all"]["desc"]["d"]["2026-09"] == {"LUA": [1, 1, 0, 0]}  # o desconto conta como plantão
     assert s.cotacoes and s.cotacoes[0]["quotationCode"] == "Q-INVENTADA-1"
+
+
+@pytest.mark.parametrize("n", [0, 99])
+def test_power_crm_com_menos_de_100_cotacoes_para_sem_mexer(n):
+    """16/11: erro 500 do Power CRM devolveu 0 cotações. Com menos de 100, para (ErroBusca) e nada muda."""
+    p = pacotes()
+    antes = copy.deepcopy(p)
+    with pytest.raises(ErroBusca, match="só %d cotações" % n):
+        aplicar(p, cotacoes_de_enchimento(n), None, ESPS)
+    assert p == antes
+
+
+def test_power_crm_com_poucas_cotacoes_na_busca_completa_nao_grava(app, db):
+    _importado(db)
+
+    def rodar_falso(e):
+        return Saida(pacotes=pacotes(), cotacoes=cotacoes()[:5])
+
+    r = bc.busca_completa(app.state.Sessao, CFG, rodar=rodar_falso, clientes=CLIENTES)
+    assert r["ok"] is False and "nada foi gravado" in r["mensagem"]
+    db.expire_all()
+    assert ler(db, "all") == {"meses_base": ["2026-10"], "base": 1}

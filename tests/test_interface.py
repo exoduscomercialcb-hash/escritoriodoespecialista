@@ -248,6 +248,16 @@ PACOTE_ALL = {
 def servidor_com_dados(tmp_path_factory):
     def preparar(s):
         guardar(s, "all", PACOTE_ALL, "importacao")
+        # lista do remarketing (estático) de um especialista: um ex-associado que também está nos cancelados recentes
+        guardar(s, "esp:ESPECIALISTA INVENTADO", {"id": 1, "nome": "Especialista Inventado", "sga": [], "eqs": ["LUA"]},
+                "importacao")
+        guardar(s, "rm:ESPECIALISTA INVENTADO", [
+            {"mat": "9002", "n": "Associado Inadimplente Inventado", "pl": "TST1A02", "wa": "5521900000002",
+             "eq": "Lua", "mod": "Carro Inventado", "ano": "2019"},
+            {"mat": "8001", "n": "Associado Antigo Inventado", "pl": "TST3C01", "wa": "5521900000081", "eq": "Lua",
+             "mod": "Carro Inventado", "ano": "2015"}], "importacao")
+        s.add(Pessoa(nome="Cadastro Inventado", email="cadastro.inventado@exemplo.com.br", tipo="cadastro",
+                     situacao="ativo"))
     with _subir_servidor(tmp_path_factory.mktemp("banco_dados") / "teste.db", preparar) as url:
         yield url
 
@@ -257,7 +267,7 @@ def test_cards_do_admin_com_cancelados_de_cada_tipo(servidor_com_dados, navegado
     pg.goto(servidor_com_dados + f"/teste/entrar?email={ADMIN}&nome=Admin%20Teste")
     expect(pg).to_have_url(servidor_com_dados + "/escritorio")
     assert pg.locator(".aviso-dados").count() == 0
-    expect(pg.locator('#home [data-go="evo"] p')).to_contain_text("1 cancelados recentes")  # só os cancelados (sem st)
+    expect(pg.locator('#home [data-go="evo"] .pfs')).to_have_text("1 cancelados recentes")  # só os cancelados (sem st)
 
     # cancelados recentes: um card de cada tipo, com a cor do tipo
     pg.click('#home [data-go="evo"]')
@@ -312,5 +322,48 @@ def test_cards_do_admin_com_cancelados_de_cada_tipo(servidor_com_dados, navegado
     doc = pg.evaluate(ler, "2026-11")["data"]
     assert doc["TST2B01"]["pg"] == 200 and doc["OUTRA"] == {"ok": True}
     assert _sem_rolagem_lateral(pg)
+    assert not erros, erros
+    ctx.close()
+
+
+def test_acesso_cadastro_ve_remarketing_estatico_e_dinamico(servidor_com_dados, navegador):
+    ctx, pg, erros = _pagina(navegador)
+    pg.goto(servidor_com_dados + "/teste/entrar?email=cadastro.inventado@exemplo.com.br")
+    expect(pg).to_have_url(servidor_com_dados + "/escritorio")
+    expect(pg.locator('#home [data-go="list"] h3')).to_have_text("Remarketing estático")
+    expect(pg.locator('#home [data-go="evo"] h3')).to_have_text("Remarketing dinâmico")
+    pg.click('#home [data-go="list"]')
+    no_dinamico = pg.locator("#list article.card", has_text="Associado Inadimplente Inventado")
+    expect(no_dinamico.locator(".chip.warnc")).to_have_text("NO REMARKETING DINÂMICO")
+    expect(no_dinamico.locator(".dynbox")).to_contain_text("como inadimplente · TST1A02")
+    expect(pg.locator("#list article.card", has_text="Associado Antigo Inventado").locator(".chip.warnc")).to_have_count(0)
+    # o botão leva aos cancelados recentes já filtrados pela placa, com o filtro de situação limpo
+    no_dinamico.locator("[data-goc]").click()
+    expect(pg.locator("#evoTitle")).to_contain_text("Remarketing dinâmico · ")
+    expect(pg.locator("#cancQ")).to_have_value("TST1A02")
+    expect(pg.locator('#cancSit [data-cs="all"]')).to_have_attribute("aria-pressed", "true")
+    expect(pg.locator("#cancList article.cx")).to_have_count(1)
+    assert not erros, erros
+    ctx.close()
+
+
+def test_banco_da_pagina_so_avisa_quando_o_documento_muda(servidor_com_dados, navegador):
+    """A busca de 20 em 20 s não chama a página à toa (redesenhar a lista apagaria o foco de quem está digitando)."""
+    ctx, pg, erros = _pagina(navegador)
+    pg.clock.install()
+    pg.goto(servidor_com_dados + f"/teste/entrar?email={ADMIN}&nome=Admin%20Teste")
+    expect(pg).to_have_url(servidor_com_dados + "/escritorio")
+    pg.evaluate("""async () => { window._avisos = [];
+        const db = await window.claude.use('db');
+        db.collection('enviados').doc('teste-foco').onSnapshot(d => window._avisos.push(d.exists ? d.data().n : null)); }""")
+    pg.wait_for_function("() => window._avisos.length === 1")
+    pg.clock.run_for(65_000)  # três buscas sem mudança
+    pg.wait_for_timeout(200)
+    assert pg.evaluate("window._avisos") == [None]
+    pg.evaluate("""() => fetch('/api/banco/enviados/teste-foco', {method: 'PUT',
+                  headers: {'Content-Type': 'application/json'}, body: JSON.stringify({n: 1})})""")  # outra pessoa grava
+    pg.clock.run_for(21_000)
+    pg.wait_for_function("() => window._avisos.length === 2")
+    assert pg.evaluate("window._avisos") == [None, 1]
     assert not erros, erros
     ctx.close()
