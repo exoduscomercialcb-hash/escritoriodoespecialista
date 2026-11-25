@@ -6,6 +6,7 @@ referencia/pagina_atual.html). Ver docs/PLANO_ETAPAS_2_E_3.md.
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from datetime import datetime
 
@@ -53,6 +54,7 @@ def importar_sistema_atual(db: Session, exp) -> dict:
     especialistas = exp.get("especialistas") or []
     if not isinstance(especialistas, list) or not all(isinstance(x, dict) and x.get("nome") for x in especialistas):
         raise ErroRegra("Arquivo fora do formato: especialistas precisa ser uma lista com nome.")
+    tokens_gas = _conferir_tokens_gas(exp.get("tokens_gas"))
 
     # a importação recomeça do zero: apaga também o que a busca automática gravou depois da importação anterior
     db.execute(delete(Pacote).where(Pacote.origem.in_(("importacao", "busca"))))
@@ -77,11 +79,40 @@ def importar_sistema_atual(db: Session, exp) -> dict:
     for bloco in ("motivos", "rtcfg", "comp_registro", "creditos_fixados", "plt_cond", "notif_lideres"):
         if exp.get(bloco) is not None:
             guardar(db, bloco, exp[bloco], "importacao")
+    # tokens_gas (25/11): tokens dos links do Apps Script (anexar comprovante e enviar print), já calculados pelo
+    # sistema atual. Nunca as chaves. Cada pessoa recebe só os que pode usar (_tokens_gas); o bloco inteiro não sai.
+    if tokens_gas is not None:
+        guardar(db, "tokens_gas", tokens_gas, "importacao")
     marcacoes = importar_colecoes(db, exp.get("banco") or {})
     guardar(db, "importacao", {"gerado_em": exp.get("gerado_em"), "importado_em": agora().isoformat(),
                                "marcacoes": marcacoes}, "importacao")
     db.commit()
     return resumo_da_importacao(db)
+
+
+TOKEN_GAS = re.compile(r"[0-9a-f]{16}")
+
+
+def _conferir_tokens_gas(bloco):
+    """{"comp": {equipe: token}, "rt": {especialista: token}}, com as chaves de equipe e nome normalizadas (N).
+
+    O token tem 16 letras hexadecimais (sha256 de "rt-tok|" + chave). Qualquer outra coisa é recusada: é o jeito de
+    não deixar entrar por engano a chave do sistema atual no lugar do token.
+    """
+    if bloco is None:
+        return None
+    erro = ErroRegra('Arquivo fora do formato: tokens_gas precisa ser {"comp": {equipe: token}, "rt": {especialista: '
+                     'token}}, com tokens de 16 letras hexadecimais (nunca as chaves).')
+    if not isinstance(bloco, dict) or set(bloco) - {"comp", "rt"}:
+        raise erro
+    saida = {}
+    for tipo in ("comp", "rt"):
+        lista = bloco.get(tipo) or {}
+        if not isinstance(lista, dict) or not all(isinstance(t, str) and TOKEN_GAS.fullmatch(t)
+                                                  for t in lista.values()):
+            raise erro
+        saida[tipo] = {N(k): t for k, t in lista.items() if N(k)}
+    return saida
 
 
 def resumo_da_importacao(db: Session) -> dict:
@@ -141,24 +172,48 @@ def _lista(db: Session, nome: str) -> dict:
     return {"nome": esp.get("nome") or nome, "equipes": esp.get("eqs") or [], "rows": ler(db, "rm:" + nome) or []}
 
 
+def _tokens_gas(db: Session, p: Pessoa, equipes: set[str], especialistas: set[str]) -> dict:
+    """Os tokens do Apps Script que esta pessoa pode usar (o pacote tokens_gas inteiro nunca sai).
+
+    comp = anexar comprovante de adesão (token do líder da equipe); rt = enviar print de reativação (token do
+    especialista). Administrador, coordenação e cadastro: todos; financeiro: só comp (não envia print); líder,
+    especialista e vendedora interna: só das equipes (`equipes`) e dos especialistas (`especialistas`) dele.
+    """
+    tg = ler(db, "tokens_gas") or {}
+    comp, rt = tg.get("comp") or {}, tg.get("rt") or {}
+    if p.tipo in {"admin", "coordenacao", "cadastro"}:
+        return {"comp": dict(comp), "rt": dict(rt)}
+    if p.tipo == "financeiro":
+        return {"comp": dict(comp), "rt": {}}
+    return {"comp": {k: t for k, t in comp.items() if k in equipes},
+            "rt": {k: t for k, t in rt.items() if k in especialistas}}
+
+
 def pacote_da_pessoa(db: Session, p: Pessoa) -> dict:
     """O que a página precisa para desenhar os cards desta pessoa (cada um só vê o que é seu)."""
     chave = _chave_do_pacote(db, p)
+    pacote = ler(db, chave) if chave else None
     perfil = {"tipo": p.tipo, "admin": p.tipo in {"admin", "coordenacao", "cadastro"}, "fin": p.tipo == "financeiro",
               "cad": p.tipo == "cadastro"}
+    equipes: set[str] = set()
     if p.tipo in {"admin", "coordenacao", "cadastro"}:
-        specs = [_lista(db, c[3:]) for c in chaves(db, "rm:")]
+        nomes = [c[3:] for c in chaves(db, "rm:")]
     elif p.tipo == "lider":
         equipes = {N(e) for e in lista_de_equipes(p.equipe)}
-        specs = [_lista(db, c[4:]) for c in chaves(db, "esp:")
-                 if {N(e) for e in (ler(db, c) or {}).get("eqs") or []} & equipes]
+        nomes = [c[4:] for c in chaves(db, "esp:") if {N(e) for e in (ler(db, c) or {}).get("eqs") or []} & equipes]
     elif p.tipo == "financeiro":
-        specs = []
+        nomes = []
     else:
         nome = _especialista_da_pessoa(db, p)
-        specs = [_lista(db, nome)] if nome else []
+        nomes = [nome] if nome else []
+        if nome:  # a equipe do especialista, como o cptok do sistema atual: a do pacote dele (eq), senão a do cadastro
+            esp = ler(db, "esp:" + nome) or {}
+            eq = ((pacote or {}).get("eq") or next(iter(esp.get("eqs") or []), "")
+                  or next(iter(lista_de_equipes(p.equipe)), ""))
+            equipes = {N(eq)} if N(eq) else set()
     busca = ler(db, "busca") or {}
     info = ler(db, "importacao") or {}
-    return {"perfil": perfil, "pacote": ler(db, chave) if chave else None, "specs": specs,
+    return {"perfil": perfil, "pacote": pacote, "specs": [_lista(db, n) for n in nomes],
             "motivos": ler(db, "motivos"), "rtcfg": ler(db, "rtcfg"),
+            "gas": _tokens_gas(db, p, equipes, set(nomes)),
             "dados_de": busca.get("feita_em") or info.get("gerado_em")}

@@ -64,6 +64,14 @@ Cole o texto abaixo na conversa do Claude que cuida do Escritório atual (a que 
 > - `plt_cond`: a lista `PLT_COND` do `atualizar_retorno.py` (plantão por condição, ex.: Magnatas), como está.
 > - `creditos_fixados`: o conteúdo do `creditos_fixados.json` (aba CRÉDITOS FIXADOS), como está.
 > - `notif_lideres`: o conteúdo do `notif_lideres.json` (quem recebe os e-mails de cancelados), como está.
+> - `tokens_gas`: os **tokens** dos links do Apps Script (botões "Anexar comprovante" e "Enviar prints"), no formato
+>   `{"comp": {"<EQUIPE>": "<token>"}, "rt": {"<nome do especialista, como no spec_keys.json>": "<token>"}}`. Calcule
+>   como o sistema atual: token = os 16 primeiros caracteres hexadecimais do sha256 de `"rt-tok|"` + chave (a função
+>   `tokf` do `atualizar_retorno.py` e `tokOf` da página). `comp`: o token do líder de cada equipe (o `LTOK`), com uma
+>   entrada para cada equipe e carteira de `evo.all.teams`; a que não tem líder (ex.: carteira Exodus Benefícios) leva o
+>   token que o sistema atual usa para ela (`LTOK.get(equipe) or LTOK.get("RECREIO")`). `rt`: o token de cada
+>   especialista do `spec_keys.json`, calculado com a chave dele. **Não** são as chaves (`k`): as chaves nunca saem do
+>   Kit, e o sistema novo recusa o arquivo se aparecer qualquer coisa que não seja um token de 16 caracteres.
 > - `banco`: o conteúdo atual das coleções do banco da página, no formato `{coleção: {id do documento: dados}}`:
 >   `enviados`, `comp` (todos os documentos, inclusive `regras`), `compconf`, `reativ` e `cancenv`.
 > Confira no fim: quantos especialistas, quantas linhas no remarketing e quais meses em `evo.all.meses_base`.
