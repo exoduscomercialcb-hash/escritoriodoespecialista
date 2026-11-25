@@ -23,7 +23,8 @@ log = logging.getLogger("escritorio")
 TRAVA_SGA = "sga_bloqueado"
 # Horários da busca completa do SGA (Brasília): 06:00 e 16:00 (decisão do Rafael, 10/11).
 HORARIOS_SGA = (time(6, 0), time(16, 0))
-FONTES = {"sga": "SGA", "powercrm": "Power CRM", "bi": "BI Brasil Atuarial", "drive": "Google Drive"}
+FONTES = {"sga": "SGA", "powercrm": "Power CRM", "bi": "BI Brasil Atuarial", "drive": "Google Drive",
+          "email": "E-mails de cancelados"}
 INTERVALO_DO_TESTE_DE_PARTIDA = timedelta(hours=12)
 
 

@@ -32,6 +32,9 @@ SITUACOES = ("pendente", "ativo", "bloqueado")
 
 HOST_ESCRITORIO_PADRAO = "escritorio.exodusbeneficios.com.br"
 
+# Envio dos e-mails de cancelados (app/avisos.py). Valor desconhecido vira "teste": nunca manda aos reais por engano.
+MODOS_EMAILS_CANCELADOS = ("desligado", "teste", "ligado")
+
 
 def _lista(valor: str | None) -> list[str]:
     return [p.strip().lower() for p in (valor or "").split(",") if p.strip()]
@@ -39,6 +42,11 @@ def _lista(valor: str | None) -> list[str]:
 
 def _sim(valor: str | None) -> bool:
     return (valor or "").strip().lower() in {"1", "sim", "true", "yes", "on"}
+
+
+def _modo_emails(valor: str | None) -> str:
+    modo = (valor or "").strip().lower()
+    return modo if modo in MODOS_EMAILS_CANCELADOS else "teste"
 
 
 MARCA_DA_SENHA = "[YOUR-PASSWORD]"
@@ -100,6 +108,9 @@ class Config:
     planilha_inside_sales: str = ""
     testar_na_partida: bool = False  # testa SGA e Power CRM quando o servidor liga (só no Render)
     busca_automatica: bool = False  # busca completa diária às 06:00 e às 16:00 (só no Render; BUSCA_AUTOMATICA=0 desliga)
+    gmail_usuario: str = ""  # conta Gmail que envia os e-mails de cancelados (app/avisos.py)
+    gmail_senha_app: str = field(default="", repr=False)  # senha de app do Gmail (16 letras; os espaços não contam)
+    emails_cancelados: str = "teste"  # desligado | teste (tudo só para gmail_usuario) | ligado (destinatários reais)
     extras: dict = field(default_factory=dict)
 
     @property
@@ -161,4 +172,7 @@ def carregar(env: dict | None = None) -> Config:
         testar_na_partida=em_producao,
         busca_automatica=em_producao and (env.get("BUSCA_AUTOMATICA") or "1").strip().lower() not in {
             "0", "nao", "não", "false", "off"},
+        gmail_usuario=env.get("GMAIL_USUARIO", "").strip(),
+        gmail_senha_app=env.get("GMAIL_SENHA_APP", "").strip(),
+        emails_cancelados=_modo_emails(env.get("EMAILS_CANCELADOS")),
     )

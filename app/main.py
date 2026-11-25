@@ -21,6 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .atualizacoes import teste_de_partida
 from .busca.completa import agendador
+from .comprovantes import agendador_comprovantes
 from .config import Config, carregar
 from .db import criar_engine, descrever_banco, fabrica_de_sessoes, iniciar_banco, motivo_da_falha
 from .hosts import NEUTRA, pagina_do_host
@@ -90,6 +91,9 @@ def criar_app(cfg: Config | None = None) -> FastAPI:
         if cfg.busca_automatica:
             threading.Thread(target=agendador, args=(app.state.Sessao, cfg, parar), daemon=True,
                              name="agendador-da-busca").start()
+        if cfg.busca_automatica and cfg.google_service_account_json and cfg.drive_pasta_comprovantes:
+            threading.Thread(target=agendador_comprovantes, args=(app.state.Sessao, cfg, parar), daemon=True,
+                             name="agendador-dos-comprovantes").start()
         yield
         parar.set()
         engine.dispose()
