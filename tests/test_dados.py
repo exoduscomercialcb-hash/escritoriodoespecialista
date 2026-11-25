@@ -103,8 +103,13 @@ def test_banco_de_marcacoes(admin, novo_cliente, db):
     assert esp.get("/api/banco/enviados/abc123").json() == {"exists": True, "data": {"c1": 1, "c2": 2}}
     assert fin.get("/api/banco/enviados").json()["docs"] == [{"id": "abc123", "data": {"c1": 1, "c2": 2}}]
     # atualização junta objetos dentro de objetos (prints da reativação: {"p": {chave: print}})
-    esp.put("/api/banco/reativ/lider1", json={"p": {"a": {"n": 1}}, "x": 1})
-    esp.patch("/api/banco/reativ/lider1", json={"p": {"b": {"n": 2}}})
+    # reativ: quem não é da gestão só grava o próprio documento (reativ/<id do cadastro>); a gestão grava em todos
+    assert esp.put("/api/banco/reativ/lider1", json={"p": {}}).status_code == 400
+    assert esp.delete("/api/banco/reativ/lider1", headers={"content-type": "application/json"}).status_code == 400
+    meu = str(esp.get("/api/eu").json()["pessoa"]["id"])
+    assert esp.put(f"/api/banco/reativ/{meu}", json={"p": {}}).json() == {"ok": True}
+    fin.put("/api/banco/reativ/lider1", json={"p": {"a": {"n": 1}}, "x": 1})
+    fin.patch("/api/banco/reativ/lider1", json={"p": {"b": {"n": 2}}})
     assert admin.get("/api/banco/reativ/lider1").json()["data"] == {"p": {"a": {"n": 1}, "b": {"n": 2}}, "x": 1}
     # reativ: quem não é da gestão só recebe os prints que pode ver (nenhum destes tem esp; ver tests/test_prints.py)
     assert esp.get("/api/banco/reativ/lider1").json()["data"] == {"p": {}}
