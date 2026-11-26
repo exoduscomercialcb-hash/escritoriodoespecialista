@@ -186,3 +186,18 @@ def test_excluir_tem_limites(admin, novo_cliente, db):
     entrar(c, "comum@exemplo.com.br")
     assert c.post(f"/api/admin/pessoas/{p.id}/excluir", json={}).status_code == 403
     assert admin.post(f"/api/admin/pessoas/{p.id}/excluir", content="x").status_code == 415
+
+
+def test_administrador_pode_ser_lider_de_um_especialista(admin, db):
+    """26/11: o Rafael (administrador) é o líder da Recreio e não aparecia na lista de líderes."""
+    from .conftest import cpf_inventado
+    op = admin.get("/api/admin/opcoes").json()
+    eu = next(l for l in op["lideres"] if l["nome"] == "Admin Teste")
+    r = admin.post("/api/admin/pessoas", json={"nome": "Liderado Do Admin Inventado", "tipo": "especialista",
+                                               "cpf": cpf_inventado(731), "equipe": "Recreio", "lider_id": eu["id"]})
+    assert r.status_code == 200, r.text
+    novo = next(p for p in admin.get("/api/admin/pessoas").json()["pessoas"] if p["nome"] == "Liderado Do Admin Inventado")
+    assert novo["lider_id"] == eu["id"] and novo["situacao"] == "ativo"
+    # editar também aceita o administrador como líder
+    r = admin.patch(f"/api/admin/pessoas/{novo['id']}", json={"lider_id": eu["id"]})
+    assert r.status_code == 200, r.text
