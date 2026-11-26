@@ -6,6 +6,11 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
 
 ## Onde estamos (atualize esta seção a cada entrega)
 
+- **25/11: VIRADA FEITA.** A equipe usa só https://escritorio.exodusbeneficios.com.br. O sistema atual (claude.ai) ficou como
+  cópia de segurança, com o aviso de mudança de endereço e as 3 tarefas agendadas **desativadas** (não apagadas).
+  Exportação final importada às 10:53 (100 especialistas, 3.411 linhas do remarketing, tokens do Apps Script).
+  E-mails de cancelados **ligados** (`EMAILS_CANCELADOS=ligado`). Falta: prints antigos de reativação (176 imagens,
+  via pasta do Drive) e registrar no card os prints novos que chegam ao Drive pelo botão.
 - **No ar** em https://escritorio.exodusbeneficios.com.br (e no endereço `.onrender.com`), publicando a `main` só
   depois dos testes ("After CI Checks Pass"). PRs #1 a #4 aprovados em 08/11.
 - **Etapa 1** concluída: login com Google, cadastro pela coordenação, entrada com CPF + WhatsApp, painel do
