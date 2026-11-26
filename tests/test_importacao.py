@@ -96,6 +96,7 @@ def test_filtro_aguardando_e_busca_por_cpf(admin, db):
     assert nomes(situacao="aguardando") == ["Ainda Nao Entrou"]
     assert nomes(q=cpf_inventado(80)[2:8]) == ["Ainda Nao Entrou"]
     assert "Admin Teste" not in nomes(situacao="aguardando")
+    assert "Admin Teste" in nomes(situacao="acessou") and "Ainda Nao Entrou" not in nomes(situacao="acessou")
 
 
 def test_editar_cpf_e_whatsapp(admin, db):
