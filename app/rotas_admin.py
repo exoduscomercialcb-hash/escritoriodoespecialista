@@ -60,6 +60,8 @@ def listar_pessoas(situacao: str | None = None, q: str | None = None, db: Sessio
         consulta = consulta.where(Pessoa.situacao == situacao)
     elif situacao == "aguardando":  # cadastrado pela coordenação e ainda não entrou com o Google
         consulta = consulta.where(Pessoa.vinculado_em.is_(None), Pessoa.situacao != "bloqueado")
+    elif situacao == "acessou":  # já entrou pelo menos uma vez com o Google (pedido do Rafael, 26/11)
+        consulta = consulta.where(Pessoa.vinculado_em.is_not(None))
     ordem = case((Pessoa.situacao == "pendente", 0), (Pessoa.situacao == "ativo", 1), else_=2)
     pessoas = db.scalars(consulta.order_by(ordem, Pessoa.nome)).all()
     termo = limpar_espacos(q).lower()

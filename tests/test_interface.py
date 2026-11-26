@@ -188,6 +188,10 @@ def test_fluxo_completo_planilha_primeiro_acesso_e_acessos(servidor, navegador):
 
     # o admin vê o WhatsApp e o 1º acesso no cadastro
     adm.click('[data-adm="cad"]')
+    # filtro "Já acessou" (26/11): quem entrou aparece; quem só foi cadastrado, não
+    adm.click('#cadFiltro [data-sit="acessou"]')
+    expect(adm.locator("#cadTabela tr.pessoa", has_text="Especialista Novo Inventado")).to_have_count(1)
+    expect(adm.locator("#cadTabela tr.pessoa", has_text="Aguardando 1º acesso")).to_have_count(0)
     adm.click('#cadFiltro [data-sit="ativo"]')
     ativo = adm.locator("#cadTabela tr.pessoa", has_text="Especialista Novo Inventado")
     expect(ativo).to_contain_text("(21) 98765-4321")  # WhatsApp e e-mail Google preenchidos no primeiro acesso
