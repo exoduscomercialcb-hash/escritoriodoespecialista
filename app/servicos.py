@@ -304,7 +304,7 @@ def atualizar_pessoa(db: Session, alvo: Pessoa, dados: dict, quem: Pessoa, cfg: 
         lider_id = dados["lider_id"] or None
         if lider_id is not None:
             lider = db.get(Pessoa, int(lider_id))
-            if lider is None or lider.tipo != "lider" or lider.id == alvo.id:
+            if lider is None or lider.tipo not in TIPOS_QUE_LIDERAM or lider.id == alvo.id:
                 raise ErroRegra("Escolha um líder da lista.")
             lider_id = lider.id
         novo["lider_id"] = lider_id
@@ -417,7 +417,13 @@ def data_do_filtro(valor: str | None) -> date | None:
         raise ErroRegra("Data inválida no filtro.") from None
 
 
+# Quem pode ser escolhido como líder de um especialista: o líder e também o administrador e a coordenação, que podem
+# liderar uma equipe (ex.: o Rafael, administrador, é o líder da Recreio; pedido de 26/11).
+TIPOS_QUE_LIDERAM = ("lider", "admin", "coordenacao")
+
+
 def lideres(db: Session) -> list[dict]:
-    rows = db.scalars(select(Pessoa).where(Pessoa.tipo == "lider").order_by(Pessoa.nome))
+    rows = db.scalars(select(Pessoa).where(Pessoa.tipo.in_(TIPOS_QUE_LIDERAM), Pessoa.situacao != "bloqueado")
+                      .order_by(Pessoa.nome))
     return [{"id": p.id, "nome": p.nome, "equipe": p.equipe, "situacao": p.situacao} for p in rows]
 

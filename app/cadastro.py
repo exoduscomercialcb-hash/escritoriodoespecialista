@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from .config import TIPOS
 from .db import Pessoa
-from .servicos import (ErroRegra, chave, formatar_cpf, formatar_whatsapp, limpar_cpf, limpar_email, limpar_equipes,
-                       limpar_espacos, limpar_nome, limpar_whatsapp,
+from .servicos import (TIPOS_QUE_LIDERAM, ErroRegra, chave, formatar_cpf, formatar_whatsapp, limpar_cpf,
+                       limpar_email, limpar_equipes, limpar_espacos, limpar_nome, limpar_whatsapp,
                        lista_de_equipes, so_numeros)
 from .tempo import agora, formatar
 
@@ -63,7 +63,7 @@ def criar_pre_cadastro(db: Session, dados: dict, quem: Pessoa) -> Pessoa:
     lider_id = dados.get("lider_id") or None
     if lider_id is not None:
         lider = db.get(Pessoa, int(lider_id))
-        if lider is None or lider.tipo != "lider":
+        if lider is None or lider.tipo not in TIPOS_QUE_LIDERAM:
             raise ErroRegra("Escolha um líder da lista.")
     p = Pessoa(nome=limpar_nome(dados.get("nome")), tipo=_tipo(dados.get("tipo"), quem), cpf=cpf,
                equipe=limpar_equipes(dados.get("equipe")), lider_id=lider_id,
@@ -161,7 +161,7 @@ def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
 
     # líderes: os já cadastrados no sistema e os que estão na própria planilha
     lideres_conhecidos = set()
-    for p in db.scalars(select(Pessoa).where(Pessoa.tipo == "lider")):
+    for p in db.scalars(select(Pessoa).where(Pessoa.tipo.in_(TIPOS_QUE_LIDERAM))):
         lideres_conhecidos.add(chave(p.nome))
     for r in prontos:
         if r["tipo"] == "lider":
@@ -196,7 +196,7 @@ def importar_planilha(db: Session, texto: str, quem: Pessoa) -> dict:
     db.flush()
 
     id_do_lider = {}
-    for p in db.scalars(select(Pessoa).where(Pessoa.tipo == "lider")):
+    for p in db.scalars(select(Pessoa).where(Pessoa.tipo.in_(TIPOS_QUE_LIDERAM))):
         id_do_lider.setdefault(chave(p.nome), p.id)
     for r in prontos:
         if r["lider"]:
