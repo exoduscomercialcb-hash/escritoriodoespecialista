@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, event, inspect,
-                        text)
+from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, create_engine, event,
+                        inspect, text)
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
@@ -114,6 +114,20 @@ class Documento(Base):
     dados: Mapped[str] = mapped_column(Text)  # JSON
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
     atualizado_por: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pessoas.id
+
+
+class Imagem(Base):
+    """Imagens guardadas no próprio banco e servidas pelo sistema (hoje: os prints antigos de reativação que vieram
+    no .zip do Drive, app/prints.py). Quem pode ver fica aqui (esp), gravado na primeira ligação, e não no registro
+    da reativ, que a página pode regravar. RLS ligada como nas outras: só o servidor lê."""
+    __tablename__ = "imagens"
+
+    id: Mapped[str] = mapped_column(String(200), primary_key=True)  # id do asset do sistema atual
+    mime: Mapped[str] = mapped_column(String(30))
+    dados: Mapped[bytes] = mapped_column(LargeBinary)
+    esp: Mapped[str] = mapped_column(Text, default="[]")  # JSON: nomes N() de quem pode ver
+    origem: Mapped[str | None] = mapped_column(String(250), nullable=True)  # ex.: "zip:<id do arquivo no Drive>"
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
 
 
 class Atualizacao(Base):

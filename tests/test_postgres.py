@@ -38,9 +38,31 @@ def test_tabelas_com_rls_e_criacao_repetida(url_limpa):
     iniciar_banco(engine)  # ligar o servidor de novo não pode dar erro
     with engine.connect() as conn:
         rls = dict(conn.execute(text("SELECT relname, relrowsecurity FROM pg_class "
-                                     "WHERE relname IN ('pessoas', 'links_cadastro', 'acessos')")).all())
+                                     "WHERE relname IN ('pessoas', 'links_cadastro', 'acessos', 'imagens')")).all())
     engine.dispose()
-    assert rls == {"pessoas": True, "links_cadastro": True, "acessos": True}
+    assert rls == {"pessoas": True, "links_cadastro": True, "acessos": True, "imagens": True}
+
+
+def test_zip_dos_prints_no_postgres(url_limpa):
+    """O zip dos prints antigos no Postgres: os bytes (BYTEA) voltam iguais pela rota, e ler de novo não duplica."""
+    import app.prints as pr
+    from app.db import Imagem
+
+    from .test_prints import CFG, PNG, ZIP_A, _drive_zip, _preparar_zip
+    app = criar_app(cfg_teste(database_url=url_limpa))
+    with TestClient(app, base_url=f"https://{HOST}") as adm:
+        entrar(adm, ADMIN, "Admin Teste")
+        with app.state.Sessao() as db:
+            _preparar_zip(db)
+        for _ in range(2):
+            r = pr.atualizar_prints(app.state.Sessao, CFG, http=_drive_zip().cliente())
+            assert r["ok"] is True, r
+        with app.state.Sessao() as db:
+            assert sorted((i.id, i.origem) for i in db.query(Imagem)) == [
+                ("assetinventado02", "zip:" + ZIP_A), ("assetinventado03", "zip:" + ZIP_A)]
+        r = adm.get("/api/print/banco/assetinventado02")
+        assert r.status_code == 200 and r.content == PNG
+        assert adm.get("/api/print/banco/assetsemregistro01").status_code == 404
 
 
 def test_fluxo_da_etapa_1_no_postgres(url_limpa):

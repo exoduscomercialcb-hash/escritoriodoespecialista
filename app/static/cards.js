@@ -931,8 +931,8 @@ function renderRT() {
   $('rtListT').textContent = (S.admin ? 'Prints enviados pelos especialistas' : 'Seus prints enviados') + ' (' + nf(it.length) + ')';
   $('rtListS').textContent = 'A conferência (nome do associado × lista de reativação × boleto do mês seguinte) é feita na atualização pela coordenação.';
   const st = x => x.res ? x.res : 'Em análise';
-  // SISTEMA NOVO: a imagem vem do Drive por /api/print/<id> (app/prints.py); a que ainda aponta para /_blob/ (assets do sistema atual) não existe aqui
-  const semImg = x => gasNovo() && !/^\/api\/print\/[A-Za-z0-9_-]+$/.test(x.url || '');
+  // SISTEMA NOVO: a imagem vem do Drive por /api/print/<id> ou do banco (zip dos prints antigos) por /api/print/banco/<id do asset> (app/prints.py); a que ainda aponta para /_blob/ (assets do sistema atual) não existe aqui
+  const semImg = x => gasNovo() && !/^\/api\/print\/(banco\/)?[A-Za-z0-9_-]+$/.test(x.url || '');
   $('rtList').innerHTML = it.length ? it.map(x => `<div class="rt-item">${x.rm ? `<div class="rt-rm">Imagem apagada em ${esc(new Date(x.rm).toLocaleDateString('pt-BR'))} (prints com mais de 5 meses). O registro continua valendo.</div>` : semImg(x) ? '<div class="rt-rm">Imagem ainda não copiada para o sistema novo. O registro continua valendo.</div>' : `<a href="${esc(x.url || ('/_blob/' + x.id))}" target="_blank" rel="noopener"><img src="${esc(x.url || ('/_blob/' + x.id))}" alt="Print enviado" loading="lazy"></a>`}
       <div class="rt-cap"><b>${esc(st(x))}</b>${x.assoc ? `<span>Associado: ${esc(x.assoc)}</span>` : ''}${S.admin ? `<span>${esc(x.esp || '')}</span>` : ''}<span>Lista de ${x.mes ? mlab(x.mes) : '—'} · enviado ${new Date(x.at || 0).toLocaleDateString('pt-BR')}</span></div></div>`).join('')
     : '<p class="empty">Nenhum print enviado ainda.</p>';

@@ -1,9 +1,11 @@
 """Prints de reativação lidos do Drive e mostrados pela rota /api/print (Google simulado; nomes e ids inventados)."""
 from __future__ import annotations
 
+import io
 import json
 import re
 import struct
+import zipfile
 import zlib
 from datetime import datetime, timedelta, timezone
 
@@ -14,7 +16,7 @@ import app.prints as pr
 from app.atualizacoes import travar
 from app.busca.completa import TRAVA_BUSCA
 from app.dados import guardar, ler
-from app.db import Atualizacao, Documento, Pacote
+from app.db import Atualizacao, Documento, Imagem, Pacote
 from app.fontes.google import ClienteGoogle
 
 from .conftest import cfg_teste, criar_pessoa, entrar
@@ -83,9 +85,10 @@ def antigo() -> dict:
 
 
 class DriveFalso:
-    def __init__(self, arquivos=None, erro: httpx2.Response | None = None):
+    def __init__(self, arquivos=None, erro: httpx2.Response | None = None, conteudos: dict | None = None):
         self.arquivos = ARQUIVOS if arquivos is None else arquivos
         self.erro = erro
+        self.conteudos = conteudos or {}  # id do arquivo -> bytes (o resto baixa o PNG)
         self.pedidos: list[httpx2.Request] = []
 
     def __call__(self, pedido: httpx2.Request) -> httpx2.Response:
@@ -95,6 +98,9 @@ class DriveFalso:
         if self.erro is not None:
             return self.erro
         if pedido.url.params.get("alt") == "media":
+            aid = pedido.url.path.rsplit("/", 1)[1]
+            if aid in self.conteudos:
+                return httpx2.Response(200, content=self.conteudos[aid], headers={"Content-Type": "application/zip"})
             return httpx2.Response(200, content=PNG, headers={"Content-Type": "image/jpeg"})
         pasta = re.match(r"^'([^']+)' in parents", pedido.url.params.get("q", ""))
         return httpx2.Response(200, json={"files": self.arquivos.get(pasta.group(1), []) if pasta else []})
@@ -125,7 +131,9 @@ def test_imagem_antiga_liga_ao_registro_e_print_novo_vira_registro_uma_vez(app, 
     assert r["ok"] is True, r
     assert r["mensagem"] == ("Prints do Drive: 7 imagem(ns) lida(s); 1 imagem(ns) antiga(s) ligada(s) ao registro "
                              "(1 agora); 1 print(s) novo(s) no registro; 0 já registrado(s); 1 já copiado(s) pelo "
-                             "sistema atual; 4 sem descrição válida (ignorada(s)).")
+                             "sistema atual; 4 sem descrição válida (ignorada(s)). Zip: 0 lido(s) agora, 0 cópia(s) de "
+                             "zip já lido, 0 recusado(s); 0 imagem(ns) do zip ligada(s) ao registro, 0 repetida(s), "
+                             "0 sem registro, 0 ignorada(s).")
     docs = _reativ(db)
     # imagem antiga: só a url e o drive mudam
     esperado = antigo()
@@ -297,3 +305,231 @@ def test_lista_da_reativ_so_com_os_prints_que_cada_um_pode_ver(app, admin, novo_
     assert c["Lider Elite Inventado"].get("/api/banco/reativ/dono-inventado").json()["data"] == \
         {"p": {"pb": antigo()["p"]["pb"]}}
     assert admin.get("/api/banco/reativ/dono-inventado").json()["data"]["outro"] == 1
+
+
+# ---------------------------------------------------------------- zip dos prints antigos (25/11)
+
+JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"  # só o começo e o fim
+ZIP_A, ZIP_B = "arquivo-zip-inventado-01", "arquivo-zip-inventado-02"
+
+
+def _zip(entradas: dict) -> bytes:
+    """Um zip montado na hora: {nome da entrada: bytes} (nome terminado em "/" vira pasta)."""
+    saida = io.BytesIO()
+    with zipfile.ZipFile(saida, "w", zipfile.ZIP_DEFLATED) as z:
+        for nome, dados in entradas.items():
+            info = zipfile.ZipInfo(nome)  # ZipInfo guarda o nome como veio (inclusive "../" e "/")
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, dados if dados is not None else b"")
+    return saida.getvalue()
+
+
+ZIP_PRINTS = _zip({
+    "pasta/": None,
+    "pasta/assetinventado02.png": PNG,       # registro pb (Lider Elite Inventado)
+    "assetinventado03.jpg": JPEG,            # registro pc (Especialista Inventado)
+    "assetsemregistro01.jpg": JPEG,          # nenhum registro com esse id
+    "../assetinventado04.png": PNG,          # caminho para fora: ignorado (registro pd fica como está)
+    "/tmp/assetinventado04.png": PNG,        # caminho absoluto: ignorado
+    "assetinventado05.png": b"nao sou uma imagem",  # nome de imagem, conteúdo não: ignorado
+    "assetinventado06.txt": PNG,             # extensão que não é de imagem: ignorado
+    "__MACOSX/pasta/._assetinventado02.png": b"\x00\x05\x16\x07",  # lixo do Mac: ignorado
+})
+
+
+def zipdesc(aid: str, nome: str = "prints_reativacao_completo.zip", pasta: str = RAIZ, md5="md5-inventado-01",
+            tamanho=None) -> dict:
+    a = {"id": aid, "name": nome, "mimeType": "application/zip", "createdTime": "2026-11-25T12:00:00.000Z",
+         "parents": [pasta]}
+    if md5:
+        a["md5Checksum"] = md5
+    if tamanho is not None:
+        a["size"] = str(tamanho)
+    return a
+
+
+def _registros_zip() -> dict:
+    d = antigo()
+    for chave, aid, esp in (("pc", "assetinventado03", "Especialista Inventado"),
+                            ("pd", "assetinventado04", "Especialista Inventado"),
+                            ("pe", "assetinventado05", "Especialista Inventado")):
+        d["p"][chave] = {"id": aid, "url": "/_blob/" + aid, "esp": esp, "mes": "2026-10",
+                         "at": ms("2026-10-21T10:00:00+00:00")}
+    return d
+
+
+def _preparar_zip(db):
+    _preparar(db)
+    db.query(Documento).filter(Documento.doc_id == "dono-inventado").update({"dados": json.dumps(_registros_zip())})
+    db.commit()
+
+
+def _imagens(db) -> dict:
+    db.expire_all()
+    return {i.id: (i.mime, i.dados, json.loads(i.esp), i.origem) for i in db.scalars(select(Imagem))}
+
+
+def _drive_zip(**kw) -> DriveFalso:
+    arquivos = kw.pop("arquivos", {RAIZ: [zipdesc(ZIP_A), zipdesc(ZIP_B, nome="prints_reativacao_completo (1).zip")]})
+    return DriveFalso(arquivos=arquivos, conteudos=kw.pop("conteudos", {ZIP_A: ZIP_PRINTS, ZIP_B: ZIP_PRINTS}), **kw)
+
+
+def test_zip_liga_as_imagens_aos_registros_uma_vez_so(app, db):
+    _preparar_zip(db)
+    falso = _drive_zip()
+    r = pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert r["ok"] is True, r
+    assert r["mensagem"].endswith("Zip: 1 lido(s) agora, 1 cópia(s) de zip já lido, 0 recusado(s); 2 imagem(ns) do "
+                                  "zip ligada(s) ao registro, 0 repetida(s), 1 sem registro, 5 ignorada(s)."), r
+    assert len(r["mensagem"]) < 500 and "Inventad" not in r["mensagem"]
+    assert falso.baixados() == [ZIP_A]  # a cópia igual (mesmo md5) nem é baixada
+    assert _imagens(db) == {
+        "assetinventado02": ("image/png", PNG, ["LIDER ELITE INVENTADO"], "zip:" + ZIP_A),
+        "assetinventado03": ("image/jpeg", JPEG, ["ESPECIALISTA INVENTADO"], "zip:" + ZIP_A)}
+    esperado = _registros_zip()
+    esperado["p"]["pb"].update(url="/api/print/banco/assetinventado02", zip=ZIP_A)
+    esperado["p"]["pc"].update(url="/api/print/banco/assetinventado03", zip=ZIP_A)
+    docs = _reativ(db)
+    assert docs == {"dono-inventado": esperado}  # pa, pd e pe ficam como estavam
+    estado = ler(db, pr.ESTADO_ZIP)["zips"]
+    assert set(estado) == {ZIP_A, ZIP_B} and estado[ZIP_B]["igual"] is True and estado[ZIP_A]["ligadas"] == 2
+
+    # de novo: nada é baixado, nada duplica e nada é regravado
+    antes = {d.doc_id: d.atualizado_em for d in db.scalars(select(Documento))}
+    falso = _drive_zip()
+    r = pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert "Zip: 0 lido(s) agora, 0 cópia(s) de zip já lido, 0 recusado(s); 0 imagem(ns)" in r["mensagem"], r
+    assert falso.baixados() == [] and len(_imagens(db)) == 2 and _reativ(db) == docs
+    assert {d.doc_id: d.atualizado_em for d in db.scalars(select(Documento))} == antes
+
+    # registro importado de novo (url /_blob/ outra vez): volta a apontar para o banco, sem baixar o zip
+    db.query(Documento).filter(Documento.doc_id == "dono-inventado").update({"dados": json.dumps(_registros_zip())})
+    db.commit()
+    falso = _drive_zip()
+    assert pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())["ok"] is True
+    assert falso.baixados() == [] and _reativ(db) == docs
+
+
+def test_zip_sem_md5_baixado_duas_vezes_nao_duplica(app, db):
+    _preparar_zip(db)
+    arquivos = {RAIZ: [{"id": SUB, "name": "Antigas", "mimeType": "application/vnd.google-apps.folder"}],
+                SUB: [zipdesc(ZIP_A, pasta=SUB, md5=None), zipdesc(ZIP_B, pasta=SUB, md5=None)]}  # em subpasta
+    falso = _drive_zip(arquivos=arquivos)
+    r = pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert "Zip: 2 lido(s) agora, 0 cópia(s) de zip já lido, 0 recusado(s); 2 imagem(ns) do zip ligada(s) ao " \
+           "registro, 2 repetida(s), 2 sem registro, 10 ignorada(s)." in r["mensagem"], r
+    assert sorted(falso.baixados()) == [ZIP_A, ZIP_B]
+    assert {i: v[3] for i, v in _imagens(db).items()} == {"assetinventado02": "zip:" + ZIP_A,
+                                                          "assetinventado03": "zip:" + ZIP_A}
+    falso = _drive_zip(arquivos=arquivos)
+    pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert falso.baixados() == [] and len(_imagens(db)) == 2
+
+
+def test_entrada_do_zip_que_nao_serve():
+    assert pr.asset_da_entrada("pasta/sub/assetinventado01.JPG") == "assetinventado01"
+    assert pr.asset_da_entrada("assetinventado01.webp") == "assetinventado01"
+    for nome in ("../assetinventado01.jpg", "pasta/../../assetinventado01.jpg", "..\\assetinventado01.jpg",
+                 "/assetinventado01.jpg", "C:/assetinventado01.jpg", "C:assetinventado01.jpg", "pasta/",
+                 "assetinventado01.svg", "assetinventado01.jpg.exe", "assetinventado01", ".assetinventado01.jpg",
+                 "__MACOSX/assetinventado01.jpg", "nome com espaço.jpg", ""):
+        assert pr.asset_da_entrada(nome) is None, nome
+    assert [pr.tipo_pelos_bytes(b) for b in (PNG, JPEG, b"GIF89a....", b"RIFF\x00\x00\x00\x00WEBPVP8 ",
+                                             b"<svg></svg>", b"")] == \
+        ["image/png", "image/jpeg", "image/gif", "image/webp", None, None]
+
+
+def test_zip_bomba_e_zip_grande_sao_recusados_sem_gravar(app, db, monkeypatch):
+    _preparar_zip(db)
+    monkeypatch.setattr(pr, "LIMITE_TOTAL_ZIP", 50_000)
+    monkeypatch.setattr(pr, "LIMITE_ZIP", 5_000_000)
+    # imagens que, descompactadas, passam do total (zeros comprimem quase a nada: o zip tem poucos KB)
+    bomba = _zip({"assetinventado02.png": PNG + b"\x00" * 30_000, "assetinventado03.jpg": JPEG + b"\x00" * 30_000})
+    assert len(bomba) < 5_000
+    grande_listado, grande_baixado = "arquivo-zip-grande-01", "arquivo-zip-grande-02"
+    arquivos = {RAIZ: [zipdesc(ZIP_A, md5="md5-bomba"),
+                       zipdesc(grande_listado, md5="md5-grande-1", tamanho=6_000_000),  # o Drive diz o tamanho
+                       zipdesc(grande_baixado, md5="md5-grande-2"),  # sem tamanho na lista: para no download
+                       zipdesc(ZIP_B, nome="estragado.zip", md5="md5-estragado")]}
+    conteudos = {ZIP_A: bomba, grande_baixado: b"PK" + b"\x00" * 5_000_001, ZIP_B: b"PK\x03\x04 nao e zip"}
+    falso = _drive_zip(arquivos=arquivos, conteudos=conteudos)
+    r = pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert r["ok"] is True, r
+    assert "Zip: 0 lido(s) agora, 0 cópia(s) de zip já lido, 4 recusado(s); 0 imagem(ns) do zip ligada(s) ao " \
+           "registro, 0 repetida(s), 0 sem registro, 0 ignorada(s)." in r["mensagem"], r
+    assert sorted(falso.baixados()) == sorted([ZIP_A, grande_baixado, ZIP_B])  # o grande da lista nem é baixado
+    assert _imagens(db) == {} and _reativ(db) == {"dono-inventado": _registros_zip()}
+    estado = ler(db, pr.ESTADO_ZIP)["zips"]
+    assert {k: v["recusado"] for k, v in estado.items()} == {
+        ZIP_A: "descompactado grande demais", grande_listado: "zip grande demais",
+        grande_baixado: "zip grande demais", ZIP_B: "zip danificado"}
+    # recusado também conta como lido: não é baixado de hora em hora
+    falso = _drive_zip(arquivos=arquivos, conteudos=conteudos)
+    pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert falso.baixados() == []
+
+
+def test_zip_imagem_grande_demais_fica_de_fora(app, db, monkeypatch):
+    _preparar_zip(db)
+    monkeypatch.setattr(pr, "LIMITE_IMAGEM_ZIP", 1_000)
+    conteudos = {ZIP_A: _zip({"assetinventado02.png": PNG + b"\x00" * 2_000, "assetinventado03.jpg": JPEG})}
+    r = pr.atualizar_prints(app.state.Sessao, CFG, http=_drive_zip(conteudos=conteudos).cliente())
+    assert "1 imagem(ns) do zip ligada(s) ao registro, 0 repetida(s), 0 sem registro, 1 ignorada(s)." in r["mensagem"]
+    assert set(_imagens(db)) == {"assetinventado03"}
+
+
+def test_erro_do_google_no_zip_nao_grava_nada(app, db):
+    _preparar_zip(db)
+
+    class FalhaNoSegundo(DriveFalso):
+        def __call__(self, pedido):
+            if pedido.url.params.get("alt") == "media" and pedido.url.path.endswith(ZIP_B):
+                self.pedidos.append(pedido)
+                return httpx2.Response(500, text="detalhe-cru-inventado")
+            return super().__call__(pedido)
+    arquivos = {RAIZ: [zipdesc(ZIP_A), zipdesc(ZIP_B, md5="md5-outro")]}
+    falso = FalhaNoSegundo(arquivos=arquivos, conteudos={ZIP_A: ZIP_PRINTS})
+    r = pr.atualizar_prints(app.state.Sessao, CFG, http=falso.cliente())
+    assert r["ok"] is False and "Nada foi gravado" in r["mensagem"] and "cru" not in r["mensagem"]
+    assert _imagens(db) == {} and ler(db, pr.ESTADO_ZIP) is None
+    assert _reativ(db) == {"dono-inventado": _registros_zip()}
+
+
+def test_rota_da_imagem_do_banco_so_para_quem_pode_ver(app, admin, novo_cliente, db):
+    _preparar_zip(db)
+    assert pr.atualizar_prints(app.state.Sessao, CFG, http=_drive_zip().cliente())["ok"] is True
+    c = _pessoas(db, novo_cliente)
+    r = admin.get("/api/print/banco/assetinventado02")
+    assert r.status_code == 200 and r.content == PNG and r.headers["content-type"] == "image/png"
+    assert r.headers["cache-control"] == "private, max-age=86400"
+    r = admin.get("/api/print/banco/assetinventado03")
+    assert r.status_code == 200 and r.content == JPEG and r.headers["content-type"] == "image/jpeg"
+    vistos = {nome: (cl.get("/api/print/banco/assetinventado02").status_code,
+                     cl.get("/api/print/banco/assetinventado03").status_code) for nome, cl in c.items()}
+    assert vistos == {
+        "Coordenacao Inventada": (200, 200), "Financeiro Inventado": (200, 200),
+        "Cadastro Inventado": (404, 404),
+        "Lider Inventado": (404, 200),          # o especialista da equipe dele
+        "Lider Elite Inventado": (200, 404),    # o dele
+        "Especialista Inventado": (404, 200),   # só o dele
+        "Especialista Dois Inventado": (404, 404),
+    }
+    # id sem imagem no banco, imagem sem registro, nome estranho: 404
+    for aid in ("assetsemregistro01", "assetinventado04", "assetinventado01", "..", "a%2F..%2Fb", "x" * 201):
+        assert admin.get("/api/print/banco/" + aid).status_code == 404, aid
+    assert novo_cliente().get("/api/print/banco/assetinventado03").status_code == 401
+    # a imagem do banco não abre pela rota do Drive (e vice-versa)
+    assert admin.get("/api/print/assetinventado03").status_code == 404
+    # registro forjado no próprio documento não abre a imagem de outra pessoa (quem vê vem da tabela imagens)
+    dois = c["Especialista Dois Inventado"]
+    eu = dois.get("/api/eu").json()["pessoa"]["id"]
+    forjado = {"id": "assetinventado03", "url": "/api/print/banco/assetinventado03", "esp": "Especialista Dois Inventado"}
+    assert dois.put(f"/api/banco/reativ/{eu}", json={"p": {"x": forjado}}).status_code == 200
+    assert dois.get("/api/print/banco/assetinventado03").status_code == 404
+    # nem a próxima leitura muda quem vê
+    pr.atualizar_prints(app.state.Sessao, CFG, http=_drive_zip().cliente())
+    assert dois.get("/api/print/banco/assetinventado03").status_code == 404
+    # registro apagado (ou que não aponta mais para o banco): a imagem deixa de abrir
+    db.query(Documento).filter(Documento.doc_id.in_(["dono-inventado", str(eu)])).delete(synchronize_session=False)
+    db.commit()
+    assert admin.get("/api/print/banco/assetinventado03").status_code == 404

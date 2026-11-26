@@ -211,6 +211,17 @@ def banco_ler(colecao: str, doc_id: str, db: Session = Depends(banco), p: Pessoa
     return {"exists": dados is not None, "data": dados}
 
 
+@rotas.get("/api/print/banco/{asset_id}")
+def print_do_banco(asset_id: str, db: Session = Depends(banco), p: Pessoa = Depends(exige_pessoa)):
+    """Um print antigo de reativação guardado no banco (veio do .zip do Drive). A mesma regra de quem vê da rota de
+    baixo: quem não pode ver, ou id que não está num registro da reativ, recebe 404."""
+    achou = prints.imagem_do_banco_que_pode_ver(db, p, asset_id)
+    if achou is None:
+        raise HTTPException(404, "Print não encontrado.")
+    tipo, conteudo = achou
+    return Response(conteudo, media_type=tipo, headers={"Cache-Control": "private, max-age=86400"})
+
+
 @rotas.get("/api/print/{drive_id}")
 def print_de_reativacao(drive_id: str, request: Request, db: Session = Depends(banco),
                         p: Pessoa = Depends(exige_pessoa)):
