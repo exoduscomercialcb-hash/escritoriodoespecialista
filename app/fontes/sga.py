@@ -132,12 +132,15 @@ class ClienteSGA:
             self.espera(5 * (tentativa + 1))
         raise SGAErro(f"o SGA não respondeu em {caminho} depois de 3 tentativas")
 
-    def get(self, caminho: str):
-        """Consulta por GET (motivos, detalhes de um veículo). Devolve o JSON; None se o SGA disser que não achou."""
+    def get(self, caminho: str, *, tentativas: int = 3):
+        """Consulta por GET (motivos, detalhes de um veículo). Devolve o JSON; None se o SGA disser que não achou.
+
+        `tentativas=1` (conferência de um veículo): um campo que o SGA não aceita não é repetido; o erro diz o código."""
         if self._cabecalho is None:
             self.autenticar()
         recusas = 0
-        for tentativa in range(3):
+        codigo = None
+        for tentativa in range(tentativas):
             self._contar()
             try:
                 r = self.http.get(caminho, headers=self._cabecalho)
@@ -154,13 +157,16 @@ class ClienteSGA:
                 continue
             if r.status_code in (404, 406):
                 return None
+            codigo = r.status_code
             if r.is_success:
                 try:
                     return r.json()
                 except ValueError:
                     pass
-            self.espera(5 * (tentativa + 1))
-        raise SGAErro("o SGA não respondeu a uma consulta depois de 3 tentativas")
+            if tentativa + 1 < tentativas:
+                self.espera(5 * (tentativa + 1))
+        raise SGAErro(f"o SGA não respondeu a uma consulta depois de {tentativas} tentativa(s)"
+                      + (f" (código {codigo})" if codigo else ""))
 
     def fechar(self) -> None:
         self.http.close()

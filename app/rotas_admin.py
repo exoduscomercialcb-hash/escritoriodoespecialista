@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .atualizacoes import painel as painel_de_atualizacoes
 from .atualizacoes import retirar_pausa_do_sga, testar_drive, testar_powercrm, testar_sga
 from .busca.completa import motivo_para_nao_rodar, rodar_em_segundo_plano
+from .busca.conferir import conferir_veiculo
 from .comprovantes import atualizar_comprovantes
 from .prints import atualizar_prints
 from .cadastro import MODELO_PLANILHA, criar_pre_cadastro, importar_planilha, planilha_de_cadastros
@@ -45,6 +46,11 @@ class CorpoPessoaNova(BaseModel):
 
 class CorpoPlanilha(BaseModel):
     texto: str
+
+
+class CorpoConferir(BaseModel):
+    busca: str
+    data: str | None = None  # data do contrato (opcional): procura na listagem do dia se a ficha não vier
 
 
 @rotas_admin.get("/opcoes")
@@ -184,6 +190,16 @@ def ler_prints_agora(request: Request, quem: Pessoa = Depends(exige_painel)):
     if quem.tipo != "admin":
         raise HTTPException(403, "Só o administrador lê os prints fora do horário.")
     return atualizar_prints(request.app.state.Sessao, config(request), pessoa_id=quem.id)
+
+
+@rotas_admin.post("/conferir-veiculo", dependencies=[Depends(exige_json)])
+def conferir(corpo: CorpoConferir, request: Request, db: Session = Depends(banco),
+             quem: Pessoa = Depends(exige_painel)):
+    """Por que uma adesão não aparece no card de comprovantes (só o administrador; poucas chamadas ao SGA)."""
+    if quem.tipo != "admin":
+        raise HTTPException(403, "Só o administrador confere veículos no SGA.")
+    return conferir_veiculo(db, config(request), corpo.busca, data=corpo.data, pessoa_id=quem.id,
+                            http=getattr(request.app.state, "http_sga", None))  # http_sga: só nos testes
 
 
 @rotas_admin.post("/atualizacoes/testar", dependencies=[Depends(exige_json)])

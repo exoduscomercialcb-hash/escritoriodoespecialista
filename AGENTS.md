@@ -36,6 +36,7 @@ Dono: **Rafael Veiga** (coordenador, Exodus Benefícios). Tudo em português do 
   roda com elas.
 - **10/11:** link curto de campanha `/bf` (Black Friday): abre o WhatsApp do especialista com a mensagem do lead
   já escrita. Lista em `LINKS_CURTOS` (`app/rotas.py`); teste `tests/test_links_curtos.py`.
+- **27/11 (branch `conferir-veiculo`):** Painel > Atualizações > "Conferir veículo no SGA" (só administrador, `POST /api/admin/conferir-veiculo`, `app/busca/conferir.py`): ficha pela placa, chassi ou código + 1 página da lista por data de contrato (até 4 chamadas), diagnóstico com as regras do `retorno.py` e se está no `all.ades`; registra só a conclusão.
 - **Próximo:** parte 2.4, o botão "Atualizar meus dados". Plano e ordem: `docs/PLANO_ETAPAS_2_E_3.md`.
 
 ## Antes de mexer em qualquer coisa

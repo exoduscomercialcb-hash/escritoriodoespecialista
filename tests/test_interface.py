@@ -33,10 +33,10 @@ except ImportError:  # pragma: no cover
 
 
 @contextmanager
-def _subir_servidor(banco, preparar, **estado):
+def _subir_servidor(banco, preparar, cfg_extra=None, **estado):
     # Google "configurado" com valores inventados: o teste vê o redirecionamento, mas nada sai da máquina.
     app = criar_app(cfg_teste(database_url=f"sqlite:///{banco}", google_client_id="id-inventado",
-                              google_client_secret="segredo-inventado"))
+                              google_client_secret="segredo-inventado", **(cfg_extra or {})))
     for nome, valor in estado.items():  # ex.: google_prints (o Drive simulado da rota /api/print)
         setattr(app.state, nome, valor)
     with socket.socket() as s:
@@ -491,3 +491,34 @@ def test_lider_ve_os_prints_da_equipe_vindos_do_drive(servidor_com_tokens, naveg
     assert "Sem Token" not in pg.locator("#rtList").inner_html()
     assert not ao_google and not erros, (ao_google, erros)
     ctx.close()
+
+
+# ---------------------------------------------------------------- Painel > Atualizações > Conferir veículo no SGA
+
+def test_conferir_veiculo_no_painel(tmp_path, navegador):
+    """O quadro mostra os campos do SGA e o diagnóstico (verde ok, vermelho o motivo). SGA falso, dados inventados."""
+    from .test_conferir_veiculo import PLACA, SGAFalso, veiculo
+
+    outro = veiculo(codigo_veiculo=900002, placa="TST2B34")
+    falso = SGAFalso([veiculo()], {"veiculos": [outro], "total_veiculos": 1})  # não vem na lista do dia
+    sga = {"sga_token": "token-inventado", "sga_usuario": "usuario-inventado", "sga_senha": "senha-inventada"}
+    with _subir_servidor(tmp_path / "teste.db", lambda s: None, cfg_extra=sga, http_sga=falso.cliente()) as url:
+        ctx, pg, erros = _pagina(navegador, 390)
+        pg.goto(url + f"/teste/entrar?email={ADMIN}&nome=Admin%20Teste")
+        pg.click('#home a[data-painel="1"]')
+        pg.click('[data-adm="atu"]')
+        pg.click("#boxConferir summary")
+        pg.fill("#confBusca", PLACA.lower())
+        pg.click("#confEnviar")
+        expect(pg.locator("#confResultado .err").first).to_contain_text("fica de fora porque o SGA não devolve")
+        expect(pg.locator("#confCampos tbody tr")).to_have_count(11)
+        expect(pg.locator("#confCampos")).to_contain_text("SCOOTER INVENTADA")
+        linha = pg.locator("#confDiagnostico tr", has_text="Vem na listagem por data de contrato")
+        expect(linha).to_have_class("conf-nao")
+        expect(linha.locator(".chip")).to_have_text("fica de fora")
+        expect(pg.locator("#confDiagnostico tr.conf-ok").first).to_be_visible()
+        expect(pg.locator("#atuHistorico")).to_contain_text("conferência")
+        assert _sem_rolagem_lateral(pg)
+        assert not erros, erros
+        ctx.close()
+    assert len(falso.pedidos) == 3

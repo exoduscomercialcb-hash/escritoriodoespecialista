@@ -303,6 +303,7 @@
     $('atuBuscar').hidden = EU.pessoa.tipo !== 'admin';
     $('atuComprovantes').hidden = EU.pessoa.tipo !== 'admin';
     $('atuPrints').hidden = EU.pessoa.tipo !== 'admin';
+    $('boxConferir').hidden = EU.pessoa.tipo !== 'admin';
     const pausa = $('atuPausa');
     $('atuPausaBox').hidden = !r.sga_pausado;
     $('atuRetirarPausa').hidden = EU.pessoa.tipo !== 'admin';
@@ -394,6 +395,47 @@
       $('atuResultado').replaceChildren(h('p', { class: r.ok ? 'ok-msg' : 'err' }, r.mensagem));
       carregarAtualizacoes();
     } catch (e) { $('atuResultado').replaceChildren(h('p', { class: 'err' }, e.message)); }
+    b.disabled = false;
+  });
+
+  /* Conferir veículo no SGA: os campos que o SGA devolveu e o diagnóstico das regras da busca */
+  const CONF_CAMPOS = [['codigo_veiculo', 'Código do veículo'], ['placa', 'Placa'], ['chassi', 'Chassi'], ['modelo', 'Modelo'],
+    ['data_contrato', 'Data do contrato'], ['codigo_situacao', 'Código da situação'], ['descricao_situacao', 'Situação'],
+    ['nome_voluntario', 'Especialista (voluntário)'], ['codigo_cooperativa', 'Cooperativa'], ['data_alteracao', 'Última alteração'],
+    ['codigo_associado', 'Matrícula do associado']];
+  function resultadoConferencia(r) {
+    const partes = [h('p', { class: r.diagnostico.length && !r.diagnostico.some(i => i.ok === false) ? 'ok-msg' : 'err' }, r.conclusao)];
+    for (const a of r.avisos || []) partes.push(h('p', { class: 'hint' }, a));
+    if (r.sga || r.listagem) {
+      const val = v => (v === null || v === undefined || v === '') ? '—' : String(v);
+      partes.push(h('div', { class: 'tscroll' }, h('table', { class: 'vtab conf-tab', id: 'confCampos' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Campo'), h('th', {}, 'Ficha do veículo'), h('th', {}, 'Lista por data de contrato'))),
+        h('tbody', {}, ...CONF_CAMPOS.map(([c, nome]) => {
+          const a = r.sga ? val(r.sga[c]) : '—', b = r.listagem ? val(r.listagem[c]) : '—';
+          return h('tr', { class: r.sga && r.listagem && a !== b ? 'conf-dif' : null }, h('td', { class: 'nw' }, nome), h('td', {}, a), h('td', {}, b));
+        })))));
+    }
+    if (r.diagnostico.length) {
+      partes.push(h('div', { class: 'tscroll' }, h('table', { class: 'vtab conf-tab', id: 'confDiagnostico' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Regra da busca'), h('th', {}, 'Resultado'), h('th', {}, 'Detalhe'))),
+        h('tbody', {}, ...r.diagnostico.map(i => h('tr', { class: i.ok === true ? 'conf-ok' : i.ok === false ? 'conf-nao' : 'conf-aviso' },
+          h('td', { class: 'nw' }, i.item),
+          h('td', {}, h('span', { class: i.ok === true ? 'chip ok' : i.ok === false ? 'chip bloq' : 'chip aguarda' }, i.ok === true ? 'ok' : i.ok === false ? 'fica de fora' : 'atenção')),
+          h('td', {}, i.texto)))))));
+    }
+    partes.push(h('p', { class: 'hint' }, r.chamadas + ' chamada(s) ao SGA.'));
+    return partes;
+  }
+  $('confForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const busca = $('confBusca').value.trim(), res = $('confResultado');
+    if (!busca) { res.replaceChildren(h('p', { class: 'err' }, 'Informe a placa, o chassi ou o código do veículo.')); return; }
+    const b = $('confEnviar'); b.disabled = true; res.replaceChildren(h('p', { class: 'hint' }, 'Consultando o SGA…'));
+    try {
+      const r = await api('/api/admin/conferir-veiculo', { corpo: { busca, data: $('confData').value || null } });
+      res.replaceChildren(...(r.ok ? resultadoConferencia(r) : [h('p', { class: 'err' }, r.mensagem)]));
+      carregarAtualizacoes();
+    } catch (e) { res.replaceChildren(h('p', { class: 'err' }, e.message)); }
     b.disabled = false;
   });
 
