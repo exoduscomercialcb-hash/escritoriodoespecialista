@@ -102,6 +102,18 @@
           <button class="btn" type="button" id="atuPrints">Ler prints agora</button>
         </div>
         <div id="atuResultado" role="status"></div>
+        <details class="adm-box" id="boxConferir" hidden>
+          <summary>Conferir veículo no SGA</summary>
+          <div class="box-in">
+            <p class="legend">Para descobrir por que uma adesão não aparece no card <b>Comprovante de adesões</b>. Consulta só este veículo no SGA (até 4 chamadas, só leitura) e aplica as mesmas regras da busca completa, item a item. Se a busca por chassi não for aceita, informe também a data do contrato: o veículo é procurado na lista de contratos desse dia.</p>
+            <form class="row" id="confForm">
+              <input class="field conf-busca" id="confBusca" type="text" autocomplete="off" spellcheck="false" placeholder="Placa, chassi ou código do veículo" aria-label="Placa, chassi ou código do veículo">
+              <label class="conf-data">Data do contrato (opcional)<input class="field" id="confData" type="date"></label>
+              <button class="primary" type="submit" id="confEnviar">Conferir</button>
+            </form>
+            <div id="confResultado" role="status"></div>
+          </div>
+        </details>
         <h2 class="adm-h">Histórico</h2>
         <div class="tscroll"><table class="vtab" id="atuHistorico"></table></div>
         <details class="adm-box" id="boxSistemaAtual">

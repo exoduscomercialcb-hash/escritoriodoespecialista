@@ -223,3 +223,17 @@ form.pa { display: grid; gap: 12px; }
 .atu-fonte .chip { justify-self: start; }
 .erro-fonte { color: var(--warn); }
 #atuPausa { margin-top: 16px; }
+/* Painel: Atualizações > Conferir veículo no SGA */
+.adm-box .row .conf-busca { flex: 1 1 240px; width: auto; }
+.adm-box .row .conf-data { flex: 0 1 200px; }
+.vtab.conf-tab { min-width: 0; }
+.vtab.conf-tab td { overflow-wrap: anywhere; }
+.vtab.conf-tab .chip { white-space: nowrap; }
+.vtab.conf-tab tr.conf-ok td:first-child { box-shadow: inset 4px 0 0 var(--gain); }
+.vtab.conf-tab tr.conf-nao td { background: var(--warn-bg); }
+.vtab.conf-tab tr.conf-nao td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
+.vtab.conf-tab tr.conf-aviso td:first-child { box-shadow: inset 4px 0 0 var(--loss); }
+.vtab.conf-tab tr.conf-dif td { background: var(--loss-bg); }
+#boxConferir .box-in { grid-template-columns: minmax(0, 1fr); }
+#confResultado { display: grid; gap: 10px; min-width: 0; }
+#confResultado .tscroll { margin-top: 0; }
