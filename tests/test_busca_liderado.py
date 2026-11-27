@@ -157,19 +157,24 @@ def test_power_crm_com_poucas_cotacoes_na_busca_completa_nao_grava(app, db):
     assert ler(db, "all") == {"meses_base": ["2026-10"], "base": 1}
 
 
-def test_afiliado_que_nao_e_especialista_da_equipe_fica_com_o_lider():
-    """27/11 (Rafael): o associado que se indicou (afiliado = ele mesmo no Power CRM) ou um indicador externo não é
-    liderado. A adesão fica com o líder, e não vira um "liderado" com o nome do Power CRM."""
+def test_associado_que_se_indicou_fica_com_o_lider_e_liderado_sem_acesso_fica_separado():
+    """27/11 (Rafael): o afiliado que é o próprio associado (ele se indicou) não é liderado: a adesão fica com o líder.
+    O liderado de verdade continua separado, mesmo sem acesso próprio (sem estar na lista de especialistas)."""
     g = pacote_geral()
-    g["ades"].append({"m": "2026-10", "t": "LUA", "esp": LIDER, "pl": "ZZZ1A06", "ok": True})
+    g["ades"] += [{"m": "2026-10", "t": "LUA", "esp": LIDER, "pl": "ZZZ1A06", "ok": True, "n": "Associado Inventado Indicou"},
+                  {"m": "2026-10", "t": "LUA", "esp": LIDER, "pl": "ZZZ1A07", "ok": False, "n": "Outro Associado Inventado"}]
     pac = {"all": g}
-    cot = cotacoes() + [{"cardStatus": 5, "isShelved": "N", "vehicleChassi": "", "vehiclePlates": "ZZZ1A06",
-                         "nameAffiliate": "Associado Inventado Que Se Indicou"}]
+    base = {"cardStatus": 5, "isShelved": "N", "vehicleChassi": ""}
+    cot = cotacoes() + [dict(base, vehiclePlates="ZZZ1A06", nameAffiliate="ASSOCIADO INVENTADO INDICOU"),
+                        dict(base, vehiclePlates="ZZZ1A07", nameAffiliate="Liderado Sem Acesso Inventado",
+                             affiliateConsultant="Lider Inventado Lua")]
     st = aplicar(pac, cot, None, ESPS)
-    a = next(x for x in pac["all"]["ades"] if x["pl"] == "ZZZ1A06")
-    assert a["esp"] == LIDER and "esp_sga" not in a  # ficou com o líder
-    assert "LUA|lid:ASSOCIADO INVENTADO QUE SE INDICOU" not in pac["all"]["series"]
-    assert "ASSOCIADO INVENTADO QUE SE INDICOU" not in pac["all"]["vesp"]["LUA"]
-    assert st.get("afiliado_nao_especialista") == 1
-    # o liderado de verdade (especialista da equipe) continua recebendo as dele
-    assert any(x["esp"] == "Liderado Inventado Silva" for x in pac["all"]["ades"])
+    a6 = next(x for x in pac["all"]["ades"] if x["pl"] == "ZZZ1A06")
+    assert a6["esp"] == LIDER and "esp_sga" not in a6  # ele se indicou: fica com o líder
+    assert "LUA|lid:ASSOCIADO INVENTADO INDICOU" not in pac["all"]["series"]
+    a7 = next(x for x in pac["all"]["ades"] if x["pl"] == "ZZZ1A07")
+    assert a7["esp"] == "Liderado Sem Acesso Inventado" and a7["esp_sga"] == LIDER  # liderado sem acesso: separado
+    assert st["associado_se_indicou"] == 1
+    # só os NOMES dos campos do afiliado (para achar o consultor no Power CRM), nunca os valores
+    assert st["campos_do_afiliado"]["affiliateConsultant"] == 1 and "nameAffiliate" in st["campos_do_afiliado"]
+    assert "Lider Inventado Lua" not in str(st["campos_do_afiliado"])
