@@ -71,16 +71,22 @@ def movidas_antes(old: dict | None) -> dict[tuple, str]:
     return r
 
 
-def _nome_lid(af: str, t: str, o: dict, especialistas: list[dict]) -> str:
-    """Nome do liderado: o do SGA/cadastro da mesma equipe quando o 1º (e o 2º, se houver) nome batem; senão o do Power CRM."""
+def _nome_lid(af: str, t: str, o: dict, especialistas: list[dict]) -> str | None:
+    """Nome do liderado: o especialista da mesma equipe cujo 1º (e 2º, se houver) nome bate com o afiliado do Power CRM.
+
+    Regra do Rafael (27/11): afiliado que não é especialista cadastrado da equipe (ex.: o próprio associado que se
+    indicou, ou um indicador externo) NÃO é liderado: a adesão fica com o líder. Antes, o nome do Power CRM virava um
+    "liderado" que não existe. Só valem os especialistas da equipe (spec_keys / cadastro), não os nomes do `vesp`, que
+    podem ter sido criados por esse mesmo erro em buscas anteriores.
+    """
     w = [x for x in N(af).split() if x not in PART]
-    cands = list(((o.get("vesp") or {}).get(t) or {}).keys()) + [
-        N(s["nome"]) for s in especialistas if t in [N(e) for e in (s.get("eqs") or [])]]
+    cands = [N(s["nome"]) for s in especialistas if t in [N(e) for e in (s.get("eqs") or [])]]
+    cands += [N(x) for s in especialistas if t in [N(e) for e in (s.get("eqs") or [])] for x in (s.get("sga") or [])]
     for c in cands:
         cw = [x for x in c.split() if x not in PART]
         if cw and w and cw[0] == w[0] and (len(w) < 2 or w[1] in cw):
             return tc(c)
-    return tc(af)
+    return None
 
 
 def _tamanho_base(o: dict, am: list) -> int:
@@ -118,9 +124,12 @@ def _roda(o: dict, af: dict, antes: dict, especialistas: list[dict], movidas: li
             if UK(nome_af) == UK(a.get("esp")) or N(nome_af).split()[0] == N(a.get("esp")).split()[0]:
                 continue
             novo = _nome_lid(nome_af, t, o, especialistas)
+            if not novo:  # afiliado não é especialista da equipe: a adesão fica com o líder (27/11)
+                st["afiliado_nao_especialista"] = st.get("afiliado_nao_especialista", 0) + 1
+                continue
         else:
             novo = antes.get((a.get("m"), chave, N(a.get("esp"))))
-            if not novo:
+            if not novo or not _nome_lid(novo, t, o, especialistas):
                 continue
         i = am.index(a["m"])
         okv = 1 if (a.get("ok") and a["m"] <= va_ate) else 0

@@ -155,3 +155,21 @@ def test_power_crm_com_poucas_cotacoes_na_busca_completa_nao_grava(app, db):
     assert r["ok"] is False and "nada foi gravado" in r["mensagem"]
     db.expire_all()
     assert ler(db, "all") == {"meses_base": ["2026-10"], "base": 1}
+
+
+def test_afiliado_que_nao_e_especialista_da_equipe_fica_com_o_lider():
+    """27/11 (Rafael): o associado que se indicou (afiliado = ele mesmo no Power CRM) ou um indicador externo não é
+    liderado. A adesão fica com o líder, e não vira um "liderado" com o nome do Power CRM."""
+    g = pacote_geral()
+    g["ades"].append({"m": "2026-10", "t": "LUA", "esp": LIDER, "pl": "ZZZ1A06", "ok": True})
+    pac = {"all": g}
+    cot = cotacoes() + [{"cardStatus": 5, "isShelved": "N", "vehicleChassi": "", "vehiclePlates": "ZZZ1A06",
+                         "nameAffiliate": "Associado Inventado Que Se Indicou"}]
+    st = aplicar(pac, cot, None, ESPS)
+    a = next(x for x in pac["all"]["ades"] if x["pl"] == "ZZZ1A06")
+    assert a["esp"] == LIDER and "esp_sga" not in a  # ficou com o líder
+    assert "LUA|lid:ASSOCIADO INVENTADO QUE SE INDICOU" not in pac["all"]["series"]
+    assert "ASSOCIADO INVENTADO QUE SE INDICOU" not in pac["all"]["vesp"]["LUA"]
+    assert st.get("afiliado_nao_especialista") == 1
+    # o liderado de verdade (especialista da equipe) continua recebendo as dele
+    assert any(x["esp"] == "Liderado Inventado Silva" for x in pac["all"]["ades"])
